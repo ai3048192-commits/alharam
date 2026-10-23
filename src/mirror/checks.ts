@@ -33,6 +33,14 @@ export const CFG = {
     cr: [133, 173] as [number, number],
     minY: 40,
   },
+  head: {
+    match: 26,             // max distance to a calibrated head-cover colour
+    up: [0.12, 0.24],      // patches above the top forehead point (landmark 10), as a fraction of face height
+    templeUp: 0.05,        // temple patches: above the outer forehead corners (54 / 284)…
+    templeOut: 0.05,       // …and pushed outward, as fractions of face height / width
+    patch: 0.05,           // patch radius as a fraction of face width
+    hairL: 40,             // Lab lightness below this = dark hair (bare head); other unknown colours → ⚠️, never ✗
+  },
   mask: {
     match: 24,             // max distance to a calibrated mask colour
     minFace: 0.07,         // face width / longer frame side; smaller → "قرّب"
@@ -62,6 +70,7 @@ export const CFG = {
 
 /* default colours: work before calibration (blue / light-blue masks, yellow + blue gowns, blue + purple nitrile gloves) */
 export const DEFAULT_COLORS: Record<ItemId, string[]> = {
+  head: ['#9CC3E6', '#3F7CC9'],
   mask: ['#6FA3D8', '#A8CBEA'],
   gown: ['#E6CF4A', '#5A8CD2'],
   gloves: ['#4B7FD0', '#7D5CC2'],
@@ -69,11 +78,13 @@ export const DEFAULT_COLORS: Record<ItemId, string[]> = {
 export const MAX_COLORS = 3
 
 /* ---------------- types ---------------- */
-export type ItemId = 'mask' | 'gown' | 'gloves'
-export const ITEMS: ItemId[] = ['mask', 'gown', 'gloves']
+export type ItemId = 'head' | 'mask' | 'gown' | 'gloves'
+/** Shown and coached in donning order: head cover → mask → gown → gloves (last, over the gown cuffs). */
+export const ITEMS: ItemId[] = ['head', 'mask', 'gown', 'gloves']
 export type State = 'ok' | 'missing' | 'wrong' | 'uncertain'
 export type MsgId =
-  | 'ok_mask' | 'ok_gown' | 'ok_gloves'
+  | 'ok_head' | 'ok_mask' | 'ok_gown' | 'ok_gloves'
+  | 'head_none' | 'head_hair' | 'head_cut' | 'head_unknown'
   | 'mask_under_nose' | 'mask_under_mouth' | 'mask_none' | 'mask_unknown' | 'face_not_found'
   | 'hands_two' | 'hand_bare' | 'gloves_none' | 'gloves_unknown'
   | 'mask_chin' | 'body_not_visible' | 'gown_arms' | 'gown_one_arm' | 'gown_none' | 'gown_unknown'
@@ -85,9 +96,11 @@ export type Lab = [number, number, number]
 export type Pt = { x: number; y: number; visibility?: number }
 /** Anything shaped like ImageData (RGBA bytes). */
 export type Pixels = { data: ArrayLike<number>; width: number; height: number }
-export type Calibration = { mask: string[]; gown: string[]; gloves: string[]; pin?: string }
+export type Calibration = { head: string[]; mask: string[]; gown: string[]; gloves: string[]; pin?: string }
 export type Landmarks = { face?: Pt[] | null; hands?: Pt[][]; pose?: Pt[] | null }
-export type FrameResult = Record<ItemId, Verdict> & { luma: number; seen: boolean }
+export type HandState = 'gloved' | 'bare' | 'unknown' | null
+/** seen: a face or body is in view · body: face + both shoulders (someone is standing at the station) · hands: per detected hand */
+export type FrameResult = Record<ItemId, Verdict> & { luma: number; seen: boolean; body: boolean; hands: HandState[] }
 export type PatchClass = 'item' | 'skin' | 'other' | 'ref'
 /** What the debug overlay draws: sampled patches (px in the analysed frame) and their distances. */
 export type Dbg = { patches: { x: number; y: number; r: number; cls: PatchClass; d: number; rgb: Rgb }[]; points: Pt[] }
@@ -187,7 +200,7 @@ export function meanLuma(px: Pixels, step = CFG.light.step): number {
 export type PrepCal = Record<ItemId, Lab[]>
 export function prepCalibration(c: Calibration): PrepCal {
   const pick = (k: ItemId) => (c[k]?.length ? c[k] : DEFAULT_COLORS[k]).map(h => rgbToLab(hexToRgb(h)))
-  return { mask: pick('mask'), gown: pick('gown'), gloves: pick('gloves') }
+  return { head: pick('head'), mask: pick('mask'), gown: pick('gown'), gloves: pick('gloves') }
 }
 
 /**
@@ -233,6 +246,8 @@ export const FACE = {
   mouth: [0, 17, 61, 291],     // upper lip, below lower lip, both corners
   chin: [199, 175],
   left: 234, right: 454,       // cheek edges → face width
+  top: 10, chinTip: 152,       // top of the forehead / bottom of the chin → face height
+  temples: [54, 284],          // outer upper forehead corners
 }
 
 /** Skin colour sampled from the forehead (median of three patches), or null if the face isn't usable. */
@@ -273,15 +288,57 @@ export function checkMask(px: Pixels, face: Pt[] | null | undefined, cal: PrepCa
   return { state: 'uncertain', msg: 'mask_unknown' }
 }
 
+/* ---------------- HEAD COVER (FaceLandmarker) ---------------- */
+/**
+ * Patches above the hairline (straight up from landmark 10) and at both temples.
+ * all covered → ok · top covered but a temple shows hair/skin → «الشعر باين» · nothing covered → missing
+ * a patch outside the frame → «ارجع لورا» (the head is cut off).
+ */
+export function checkHead(px: Pixels, face: Pt[] | null | undefined, cal: PrepCal, skinRef: Lab | null, dbg?: Dbg): Verdict {
+  const no: Verdict = { state: 'uncertain', msg: 'face_not_found' }
+  if (!face || face.length < 455 || !skinRef) return no
+  const top = face[FACE.top], chin = face[FACE.chinTip]
+  const fh = distPx(px, top, chin), fw = distPx(px, face[FACE.left], face[FACE.right])
+  if (!fh || fw / Math.max(px.width, px.height) < CFG.mask.minFace) return no
+  // "up the face" (chin → forehead) in px, so a tilted head still samples above its own hairline
+  const ux = ((top.x - chin.x) * px.width) / fh, uy = ((top.y - chin.y) * px.height) / fh
+  const mid = { x: (face[FACE.left].x + face[FACE.right].x) / 2, y: (face[FACE.left].y + face[FACE.right].y) / 2 }
+  const move = (p: Pt, up: number, ox = 0, oy = 0): Pt => ({ x: p.x + (ux * up + ox) / px.width, y: p.y + (uy * up + oy) / px.height })
+  const topPts = CFG.head.up.map(f => move(top, f * fh))
+  const temples = FACE.temples.map(i => {
+    const t = face[i], dx = (t.x - mid.x) * px.width, dy = (t.y - mid.y) * px.height, d = Math.hypot(dx, dy) || 1
+    return move(t, CFG.head.templeUp * fh, (dx / d) * CFG.head.templeOut * fw, (dy / d) * CFG.head.templeOut * fw)
+  })
+  if (![...topPts, ...temples].every(inFrame)) return { state: 'uncertain', msg: 'head_cut' }
+  dbg?.points.push(top, ...FACE.temples.map(i => face[i]))
+  const r = Math.max(CFG.minPatchPx, Math.min(CFG.maxPatchPx, fw * CFG.head.patch))
+  // cover · bare (skin, or dark like hair) · other (an unknown colour: maybe an uncalibrated cover)
+  const look = (p: Pt) => {
+    const cx = p.x * px.width, cy = p.y * px.height, c = samplePatch(px, cx, cy, r)
+    if (!c) return null
+    const { cls, d } = classify(c, cal.head, CFG.head.match, skinRef)
+    dbg?.patches.push({ x: cx, y: cy, r, cls, d, rgb: c })
+    return cls === 'item' ? 'cover' : cls === 'skin' || rgbToLab(c)[0] < CFG.head.hairL ? 'bare' : 'other'
+  }
+  const tc = topPts.map(look), sc = temples.map(look)
+  if ([...tc, ...sc].some(c => c === null)) return { state: 'uncertain', msg: 'head_cut' }
+  const topOn = tc.every(c => c === 'cover')
+  if (topOn && sc.every(c => c === 'cover')) return { state: 'ok', msg: 'ok_head' }
+  if (topOn && sc.some(c => c === 'bare')) return { state: 'wrong', msg: 'head_hair' }   // hair still showing at a temple
+  if (tc.every(c => c === 'bare') && !sc.includes('cover')) return { state: 'missing', msg: 'head_none' }
+  return { state: 'uncertain', msg: 'head_unknown' }
+}
+
 /* ---------------- GLOVES (HandLandmarker, 21 points per hand) ---------------- */
 export const HAND = { palm: [0, 5, 9, 13, 17], index: [5, 6], ring: [13, 14], wrist: 0, middle: 9 }
 
-export function checkGloves(px: Pixels, hands: Pt[][] | undefined, cal: PrepCal, skinRef: Lab | null, dbg?: Dbg): Verdict {
+/** `out` receives the state of each detected hand (same order as `hands`), for the station's coloured boxes. */
+export function checkGloves(px: Pixels, hands: Pt[][] | undefined, cal: PrepCal, skinRef: Lab | null, dbg?: Dbg, out?: HandState[]): Verdict {
   const two: Verdict = { state: 'uncertain', msg: 'hands_two' }
   const hs = (hands || []).filter(h => h.length >= 21)
   if (hs.length < 2) return two
   const sample = makeSampler(px, skinRef, dbg)
-  const each = hs.slice(0, 2).map(h => {
+  const each: HandState[] = hs.slice(0, 2).map(h => {
     const size = distPx(px, h[HAND.wrist], h[HAND.middle])
     if (size / Math.max(px.width, px.height) < CFG.gloves.minHand) return null                // hand too small / far
     const pts = [avg(HAND.palm.map(i => h[i])), lerp(h[HAND.index[0]], h[HAND.index[1]], 0.5), lerp(h[HAND.ring[0]], h[HAND.ring[1]], 0.5)]
@@ -291,6 +348,7 @@ export function checkGloves(px: Pixels, hands: Pt[][] | undefined, cal: PrepCal,
     const k = (cls: PatchClass) => cs.filter(c => c === cls).length
     return k('item') >= CFG.gloves.need ? 'gloved' : k('skin') >= CFG.gloves.need ? 'bare' : 'unknown'
   })
+  out?.push(...each)
   if (each.some(e => e === null)) return two
   const g = each.filter(e => e === 'gloved').length, b = each.filter(e => e === 'bare').length
   if (g === 2) return { state: 'ok', msg: 'ok_gloves' }
@@ -340,17 +398,22 @@ export function checkGown(px: Pixels, pose: Pt[] | null | undefined, cal: PrepCa
 export function analyzeFrame(px: Pixels, lm: Landmarks, cal: PrepCal, dbg?: Dbg): FrameResult {
   const luma = meanLuma(px)
   const seen = !!(lm.face?.length || lm.pose?.length)
+  const pose = lm.pose
+  const body = !!lm.face?.length && !!pose && pose.length > POSE.rs &&
+    [POSE.ls, POSE.rs].every(i => (pose[i].visibility ?? 1) >= CFG.gown.minVis && inFrame(pose[i]))
   const light: MsgId | null = luma < CFG.light.dark ? 'dark' : luma > CFG.light.bright ? 'bright' : null
   if (light) {
     const v: Verdict = { state: 'uncertain', msg: light }
-    return { mask: v, gown: v, gloves: v, luma, seen }
+    return { head: v, mask: v, gown: v, gloves: v, luma, seen, body, hands: [] }
   }
   const skin = faceSkin(px, lm.face, dbg)
+  const hands: HandState[] = []
   return {
+    head: checkHead(px, lm.face, cal, skin, dbg),
     mask: checkMask(px, lm.face, cal, skin, dbg),
-    gloves: checkGloves(px, lm.hands, cal, skin, dbg),
+    gloves: checkGloves(px, lm.hands, cal, skin, dbg, hands),
     gown: checkGown(px, lm.pose, cal, skin, dbg),
-    luma, seen,
+    luma, seen, body, hands,
   }
 }
 
@@ -377,25 +440,26 @@ export function vote(frames: Verdict[], n = CFG.vote.window): Verdict {
 }
 
 export const voteAll = (frames: FrameResult[]): Record<ItemId, Verdict> =>
-  ({ mask: vote(frames.map(f => f.mask)), gown: vote(frames.map(f => f.gown)), gloves: vote(frames.map(f => f.gloves)) })
+  Object.fromEntries(ITEMS.map(k => [k, vote(frames.map(f => f[k]))])) as Record<ItemId, Verdict>
 
 /* ---------------- live coaching while putting PPE on ---------------- */
-/** Donning order: gown first, then mask, gloves last (so they go over the gown cuffs). */
-export const DONNING: ItemId[] = ['gown', 'mask', 'gloves']
+/** Donning order (the hospital's): head cover → mask → gown → gloves last (so they go over the gown cuffs). */
+export const DONNING: ItemId[] = ITEMS
 
 /**
- * next  → the first item in donning order that isn't ok yet (null when everything is ok)
+ * next  → the first checked item in donning order that isn't ok yet (null when everything is ok)
  * order → gloves are already on while the gown is clearly missing (gloves must go on last)
  */
-export function coach(r: Record<ItemId, Verdict>): { next: ItemId | null; order: boolean } {
+export function coach(r: Record<ItemId, Verdict>, items: ItemId[] = ITEMS): { next: ItemId | null; order: boolean } {
   return {
-    next: DONNING.find(k => r[k].state !== 'ok') ?? null,
-    order: r.gloves.state === 'ok' && r.gown.state === 'missing',
+    next: DONNING.find(k => items.includes(k) && r[k].state !== 'ok') ?? null,
+    order: items.includes('gloves') && items.includes('gown') && r.gloves.state === 'ok' && r.gown.state === 'missing',
   }
 }
 
-export function overall(r: Record<ItemId, Verdict>): 'pass' | 'fail' | 'uncertain' {
-  const s = ITEMS.map(k => r[k].state)
+/** pass only if every checked item is ok; items switched off (station settings) are ignored. */
+export function overall(r: Record<ItemId, Verdict>, items: ItemId[] = ITEMS): 'pass' | 'fail' | 'uncertain' {
+  const s = items.map(k => r[k].state)
   if (s.every(x => x === 'ok')) return 'pass'
   if (s.some(x => x === 'missing' || x === 'wrong')) return 'fail'
   return 'uncertain'
@@ -403,7 +467,7 @@ export function overall(r: Record<ItemId, Verdict>): 'pass' | 'fail' | 'uncertai
 
 /* ---------------- calibration storage (localStorage "mirror.calibration") ---------------- */
 export const CAL_KEY = 'mirror.calibration'
-export const defaultCalibration = (): Calibration => ({ mask: [...DEFAULT_COLORS.mask], gown: [...DEFAULT_COLORS.gown], gloves: [...DEFAULT_COLORS.gloves] })
+export const defaultCalibration = (): Calibration => ({ head: [...DEFAULT_COLORS.head], mask: [...DEFAULT_COLORS.mask], gown: [...DEFAULT_COLORS.gown], gloves: [...DEFAULT_COLORS.gloves] })
 
 export function parseCalibration(raw: string | null): Calibration {
   try {
@@ -412,6 +476,7 @@ export function parseCalibration(raw: string | null): Calibration {
     if (!j || typeof j !== 'object') return defaultCalibration()
     const d = defaultCalibration()
     return {
+      head: ok(j.head).length ? ok(j.head) : d.head,   // calibrations saved before the head cover existed get the defaults
       mask: ok(j.mask).length ? ok(j.mask) : d.mask,
       gown: ok(j.gown).length ? ok(j.gown) : d.gown,
       gloves: ok(j.gloves).length ? ok(j.gloves) : d.gloves,

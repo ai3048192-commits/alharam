@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom'
 import { configured } from './lib/supabase'
 import { SessionProvider, useSession } from './lib/session'
 import { Loading, ErrorBox } from './components/ui'
@@ -11,6 +12,10 @@ import Mirror from './screens/Mirror'
 import MirrorCalibrate from './screens/MirrorCalibrate'
 import ManagerHome from './manager/ManagerHome'
 import Cases from './manager/Cases'
+import { flushPending } from './mirror/queue'
+import Kiosk from './kiosk/Kiosk'
+import KioskSettings from './kiosk/KioskSettings'
+import KioskPrint from './kiosk/KioskPrint'
 
 function NeedsProfile({ children }: { children: JSX.Element }) {
   const { player } = useSession()
@@ -21,8 +26,23 @@ function NeedsProfile({ children }: { children: JSX.Element }) {
 
 function Shell() {
   const { ready, error } = useSession()
-  if (!ready) return <Loading text="بنجهّز اللعبة..." />
-  if (error) return <ErrorBox text={error} retry={() => location.reload()} />
+  const { pathname } = useLocation()
+  // send mirror results that were saved while offline, now and whenever the connection comes back
+  useEffect(() => {
+    if (!ready) return
+    flushPending()
+    window.addEventListener('online', flushPending)
+    return () => window.removeEventListener('online', flushPending)
+  }, [ready])
+  // the smart mirror and the PPE station run on the device itself, so they don't wait for (or need) the server
+  const mirror = pathname.startsWith('/mirror') || pathname.startsWith('/kiosk')
+  if (!ready && !mirror) return <Loading text="بنجهّز اللعبة..." />
+  if (error && !mirror) return (
+    <div className="stack">
+      <ErrorBox text={error} retry={() => location.reload()} />
+      <Link className="btn mint" to="/mirror">افتح المراية الذكية (بتشتغل من غير نت)</Link>
+    </div>
+  )
   return (
     <Routes>
       <Route path="/" element={<Home />} />
@@ -32,6 +52,9 @@ function Shell() {
       <Route path="/spot" element={<NeedsProfile><Spot /></NeedsProfile>} />
       <Route path="/mirror" element={<Mirror />} />
       <Route path="/mirror/calibrate" element={<MirrorCalibrate />} />
+      <Route path="/kiosk" element={<Kiosk />} />
+      <Route path="/kiosk/settings" element={<KioskSettings />} />
+      <Route path="/kiosk/print" element={<KioskPrint />} />
       <Route path="/manager" element={<ManagerHome />} />
       <Route path="/manager/cases" element={<Cases />} />
       <Route path="*" element={<Navigate to="/" replace />} />

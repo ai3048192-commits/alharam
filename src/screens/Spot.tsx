@@ -30,18 +30,19 @@ export default function Spot() {
   const [deadline, setDeadline] = useState<number | null>(null)
   const [result, setResult] = useState<{ reason: Reason; score: number; saved: boolean } | null>(null)
   const lock = useRef(false)
+  const ended = useRef(false)   // one end (and one saved result) per game, even if the timer and a tap land together
   const total = scene.diffs.length
 
   const start = (fresh: boolean) => {
-    lock.current = false
+    lock.current = false; ended.current = false
     if (fresh) setScene(nextScene())   // a brand-new picture every game
     setFound([]); setHearts(3); setLast(null); setMiss(null); setResult(null)
     setDeadline(Date.now() + SPOT_SECONDS * 1000); setPhase('play'); window.scrollTo({ top: 0 })
   }
 
   const end = useCallback(async (reason: Reason, f: string[], h: number) => {
-    if (phase !== 'play' || result) return
-    lock.current = true
+    if (phase !== 'play' || result || ended.current) return
+    ended.current = true; lock.current = true
     const left = deadline ? Math.max(0, (deadline - Date.now()) / 1000) : 0
     const score = f.length * 100 + (reason === 'all' ? Math.round(left) * 5 + h * 20 : 0)
     setDeadline(null); setPhase('done'); window.scrollTo({ top: 0 })

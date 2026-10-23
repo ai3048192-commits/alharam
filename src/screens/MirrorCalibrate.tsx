@@ -6,6 +6,7 @@ import { ErrorBox, Field } from '../components/ui'
 import { CAL_KEY, CFG, ITEMS, MAX_COLORS, defaultCalibration, isSkinLike, medianColor, rgbToHex, sampleBox, type Calibration, type ItemId, type Rgb } from '../mirror/checks'
 import { loadCalibration, useCamera } from '../mirror/useMirror'
 import { CamBox, Lock, PRIVACY } from './Mirror'
+import { isUnlocked as kioskUnlocked } from '../kiosk/settings'
 import '../mirror/mirror.css'
 
 const BOX = { x0: 0.35, y0: 0.35, x1: 0.65, y1: 0.65 }   // matches .mbox in mirror.css
@@ -24,10 +25,12 @@ export default function MirrorCalibrate() {
   const [note, setNote] = useState('')
   const [pin, setPin] = useState(cal.pin || '')
   const video = useRef<HTMLVideoElement>(null)
-  const open = !!manager || !cal.pin || unlocked
+  const fromKiosk = new URLSearchParams(location.search).get('from') === 'kiosk'   // opened from the station settings
+  const open = !!manager || !cal.pin || unlocked || kioskUnlocked()   // the station PIN also opens it
   const cam = useCamera(video, open)
+  const back = fromKiosk ? '/kiosk/settings' : '/mirror'
 
-  const head = <div className="mhead"><h2>معايرة الألوان</h2><Link className="linkbtn" to="/mirror">رجوع</Link></div>
+  const head = <div className="mhead"><h2>معايرة الألوان</h2><Link className="linkbtn" to={back}>رجوع</Link></div>
 
   if (!open) return (
     <div className="stack">
@@ -72,7 +75,7 @@ export default function MirrorCalibrate() {
       {head}
       {!manager && !cal.pin && <div className="banner">أي حد معاه الجهاز ده يقدر يغيّر الألوان. حط رقم سري تحت، أو ادخل كرئيس قسم.</div>}
       <div className="mprivacy"><Lock /><span>{PRIVACY}</span></div>
-      <div className="seg three" role="group" aria-label="الواقي">
+      <div className="seg" role="group" aria-label="الواقي" style={{ gridTemplateColumns: `repeat(${ITEMS.length}, 1fr)` }}>
         {ITEMS.map(k => <button key={k} type="button" aria-pressed={item === k} onClick={() => { setItem(k); setNote('') }}>{MIRROR_ITEMS[k]}</button>)}
       </div>
       {cam.error ? <ErrorBox text={errorText(cam.error)} retry={cam.retry} /> : null}
@@ -104,7 +107,7 @@ export default function MirrorCalibrate() {
         <p className="small muted">الألوان والرقم السري متسجلين على الجهاز ده بس. لو فاضي، أي حد يقدر يفتح المعايرة.</p>
       </form>
 
-      <Link className="btn" to="/mirror">جرّب الفحص</Link>
+      <Link className="btn" to={fromKiosk ? '/kiosk?test=1' : '/mirror'}>جرّب الفحص</Link>
     </div>
   )
 }

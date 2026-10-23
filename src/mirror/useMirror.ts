@@ -2,15 +2,15 @@
    No frame ever leaves the device: frames are drawn to an in-memory canvas, analysed, and dropped. */
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { FaceLandmarker, HandLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision'
-import { CFG, CAL_KEY, analyzeFrame, parseCalibration, prepCalibration, voteAll, type Dbg, type FrameResult, type ItemId, type PatchClass, type Pt, type Verdict } from './checks'
+import { CFG, CAL_KEY, ITEMS, analyzeFrame, parseCalibration, prepCalibration, voteAll, type Dbg, type FrameResult, type ItemId, type PatchClass, type Pt, type Verdict } from './checks'
 
 export type CamError = 'cam_insecure' | 'cam_unsupported' | 'cam_denied' | 'cam_none' | 'cam_busy' | 'models_failed'
 
 export const loadCalibration = () => { try { return parseCalibration(localStorage.getItem(CAL_KEY)) } catch { return parseCalibration(null) } }
 
 /* ---------------- camera: phones, tablets, laptops, USB webcams ---------------- */
-const CAM_KEY = 'mirror.camera'   // the camera picked with «غيّر الكاميرا» on this device
-const store = { get: () => { try { return localStorage.getItem(CAM_KEY) } catch { return null } }, set: (id: string | null) => { try { id ? localStorage.setItem(CAM_KEY, id) : localStorage.removeItem(CAM_KEY) } catch { /* blocked */ } } }
+const CAM_KEY = 'mirror.camera'   // the camera picked with «غيّر الكاميرا» (or in the station settings) on this device
+export const store = { get: () => { try { return localStorage.getItem(CAM_KEY) } catch { return null } }, set: (id: string | null) => { try { id ? localStorage.setItem(CAM_KEY, id) : localStorage.removeItem(CAM_KEY) } catch { /* blocked */ } } }
 const errName = (e: unknown) => (e as { name?: string })?.name || ''
 
 function camError(e: unknown): CamError {
@@ -21,8 +21,9 @@ function camError(e: unknown): CamError {
 }
 
 /** Ask for the best stream this device allows, relaxing the request step by step (old webcams/phones reject exact sizes or facingMode). */
-async function openStream(deviceId: string | null): Promise<MediaStream> {
-  const size = { width: { ideal: 1280 }, height: { ideal: 720 } }
+export type CamSize = { width: number; height: number }
+async function openStream(deviceId: string | null, want: CamSize): Promise<MediaStream> {
+  const size = { width: { ideal: want.width }, height: { ideal: want.height } }
   const tries: MediaStreamConstraints[] = [
     ...(deviceId ? [{ video: { deviceId: { exact: deviceId }, ...size } }] : []),
     { video: { facingMode: 'user', ...size } },   // phones/tablets: front camera; laptops ignore it
@@ -41,11 +42,11 @@ async function openStream(deviceId: string | null): Promise<MediaStream> {
 }
 
 /** Camera into `video` while `on`; the stream is stopped and released when `on` turns false or on unmount. */
-export function useCamera(video: RefObject<HTMLVideoElement>, on: boolean) {
+export function useCamera(video: RefObject<HTMLVideoElement>, on: boolean, size: CamSize = { width: 1280, height: 720 }) {
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<CamError | null>(null)
   const [attempt, setAttempt] = useState(0)
-  const [cams, setCams] = useState<string[]>([])
+  const [cams, setCams] = useState<{ id: string; label: string }[]>([])
   const [current, setCurrent] = useState<string | null>(null)
   const [mirrored, setMirrored] = useState(true)
 
@@ -57,7 +58,7 @@ export function useCamera(video: RefObject<HTMLVideoElement>, on: boolean) {
       if (!window.isSecureContext) { setError('cam_insecure'); return }
       if (!navigator.mediaDevices?.getUserMedia) { setError('cam_unsupported'); return }   // in-app browsers (Facebook, Instagram…)
       try {
-        stream = await openStream(store.get())
+        stream = await openStream(store.get(), size)
         const v = video.current
         if (!alive || !v) { stream.getTracks().forEach(t => t.stop()); return }
         const track = stream.getVideoTracks()[0]
@@ -71,7 +72,7 @@ export function useCamera(video: RefObject<HTMLVideoElement>, on: boolean) {
         // device labels/ids are only complete after permission is granted
         const list = await navigator.mediaDevices.enumerateDevices?.().catch(() => []) || []
         if (!alive) return
-        setCams(list.filter(d => d.kind === 'videoinput' && d.deviceId).map(d => d.deviceId))
+        setCams(list.filter(d => d.kind === 'videoinput' && d.deviceId).map((d, i) => ({ id: d.deviceId, label: d.label || 'كاميرا ' + (i + 1) })))
         setReady(true)
       } catch (e) { if (alive) setError(camError(e)) }
     })()
@@ -81,17 +82,20 @@ export function useCamera(video: RefObject<HTMLVideoElement>, on: boolean) {
       if (video.current) video.current.srcObject = null
       setReady(false)
     }
-  }, [on, attempt, video])
+  }, [on, attempt, video, size.width, size.height])
 
   const retry = useCallback(() => setAttempt(a => a + 1), [])
   /** Next camera on this device (front ↔ back, laptop ↔ USB webcam); remembered for next time. */
   const switchCamera = useCallback(() => {
     if (cams.length < 2) return
-    store.set(cams[(cams.indexOf(current || '') + 1) % cams.length])
+    const ids = cams.map(c => c.id)
+    store.set(ids[(ids.indexOf(current || '') + 1) % ids.length])
     setAttempt(a => a + 1)
   }, [cams, current])
+  /** Use this camera (station settings: e.g. a USB webcam); remembered for next time. */
+  const selectCamera = useCallback((id: string) => { store.set(id || null); setAttempt(a => a + 1) }, [])
 
-  return { ready, error, retry, mirrored, canSwitch: cams.length > 1, switchCamera }
+  return { ready, error, retry, mirrored, canSwitch: cams.length > 1, switchCamera, cameras: cams, current, selectCamera }
 }
 
 /* ---------------- models: loaded once per page, served from Cache Storage after the first visit ---------------- */
@@ -166,22 +170,34 @@ function drawDebug(cv: HTMLCanvasElement, w: number, h: number, d: Dbg, r: Frame
     g.fillRect(X(p.x) - p.r, p.y - p.r, 2 * p.r, 2 * p.r); g.strokeRect(X(p.x) - p.r, p.y - p.r, 2 * p.r, 2 * p.r)
     if (p.cls !== 'ref') { g.fillStyle = '#fff'; g.fillText(Number.isFinite(p.d) ? String(Math.round(p.d)) : '–', X(p.x) + p.r + 2, p.y + 3) }
   }
-  g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, 0, 230, 54)
+  g.fillStyle = 'rgba(0,0,0,.6)'; g.fillRect(0, 0, 230, 66)
   g.fillStyle = '#fff'; g.font = '11px monospace'
   g.fillText(`luma ${Math.round(r.luma)}  fps ${fps.toFixed(1)}`, 6, 14)
-  ;(['mask', 'gown', 'gloves'] as ItemId[]).forEach((k, i) => g.fillText(`${k}: ${r[k].state} ${r[k].msg}`, 6, 28 + i * 12))
+  ITEMS.forEach((k, i) => g.fillText(`${k}: ${r[k].state} ${r[k].msg}`, 6, 28 + i * 12))
 }
 
-export function useMirror(video: RefObject<HTMLVideoElement>, overlay: RefObject<HTMLCanvasElement>, on: boolean, debug: boolean) {
-  const cam = useCamera(video, on)
+/** The latest frame's landmarks (0..1 of the analysed, already-rotated frame) and that frame's size in px. */
+export type LiveLandmarks = { face: Pt[] | null; hands: Pt[][]; pose: Pt[] | null; w: number; h: number }
+export type Live = { voted: Record<ItemId, Verdict>; frame: FrameResult; count: number; lm: LiveLandmarks; at: number }
+/**
+ * Station options: camera size, rotate (a monitor/webcam mounted sideways: the frame is turned before analysis),
+ * fps (lower while idle, so a wall tablet stays cool), mirrored (overrides the camera's own selfie/back guess).
+ */
+export type MirrorOptions = { size?: CamSize; rotate?: 0 | 90 | 180 | 270; fps?: number; mirrored?: boolean }
+
+export function useMirror(video: RefObject<HTMLVideoElement>, overlay: RefObject<HTMLCanvasElement>, on: boolean, debug: boolean, opts: MirrorOptions = {}) {
+  const cam = useCamera(video, on, opts.size)
   const [models, setModels] = useState<Models | null>(null)
   const [modelErr, setModelErr] = useState(false)
-  const [live, setLive] = useState<{ voted: Record<ItemId, Verdict>; frame: FrameResult; count: number } | null>(null)
+  const [live, setLive] = useState<Live | null>(null)
   const frames = useRef<FrameResult[]>([])
   const dbgRef = useRef(debug)
   dbgRef.current = debug
-  const mirRef = useRef(cam.mirrored)
-  mirRef.current = cam.mirrored
+  const mirrored = opts.mirrored ?? cam.mirrored
+  const mirRef = useRef(mirrored)
+  mirRef.current = mirrored
+  const optRef = useRef(opts)
+  optRef.current = opts
 
   const load = useCallback(() => {
     setModelErr(false)
@@ -201,13 +217,18 @@ export function useMirror(video: RefObject<HTMLVideoElement>, overlay: RefObject
       const v = video.current
       if (!v || v.readyState < 2 || !v.videoWidth) return
       const now = performance.now()
-      if (now - last < 1000 / CFG.fps || v.currentTime === lastT) return   // throttle + skip repeated frames
+      if (now - last < 1000 / (optRef.current.fps || CFG.fps) || v.currentTime === lastT) return   // throttle + skip repeated frames
       fps = last ? 0.8 * fps + 0.2 * (1000 / (now - last)) : 0
       last = now; lastT = v.currentTime
       const s = Math.min(1, CFG.analysisSize / Math.max(v.videoWidth, v.videoHeight))
-      const w = Math.round(v.videoWidth * s), h = Math.round(v.videoHeight * s)
+      const sw = Math.round(v.videoWidth * s), sh = Math.round(v.videoHeight * s)
+      const rot = optRef.current.rotate || 0
+      const [w, h] = rot % 180 ? [sh, sw] : [sw, sh]
       if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h }
-      ctx.drawImage(v, 0, 0, w, h)
+      if (rot) {   // turn the frame upright before anything looks at it
+        ctx.setTransform(1, 0, 0, 1, w / 2, h / 2); ctx.rotate((rot * Math.PI) / 180)
+        ctx.drawImage(v, -sw / 2, -sh / 2, sw, sh); ctx.setTransform(1, 0, 0, 1, 0, 0)
+      } else ctx.drawImage(v, 0, 0, w, h)
       const px = ctx.getImageData(0, 0, w, h)
       ts = Math.max(ts + 1, Math.round(now))   // timestamps must strictly increase
       let face: Pt[] | null = null, hands: Pt[][] = [], pose: Pt[] | null = null, step: Kind = 'face'
@@ -218,14 +239,19 @@ export function useMirror(video: RefObject<HTMLVideoElement>, overlay: RefObject
       } catch {
         // some Android GPUs accept the GPU delegate but fail on the first frame → rebuild that one on CPU
         cancelAnimationFrame(raf)
-        if (models.gpu[step]) models.recreate(step).then(() => { if (alive) raf = requestAnimationFrame(tick) }, () => setModelErr(true))
-        else setModelErr(true)
+        // give up on these models: «جرب تاني» then loads fresh ones (the cached ones would fail the same way)
+        const fail = () => {
+          if (modelsP) { modelsP = null; for (const k of ['face', 'hand', 'pose'] as Kind[]) try { models[k].close() } catch { /* already gone */ } }
+          setModels(null); setModelErr(true)
+        }
+        if (models.gpu[step]) models.recreate(step).then(() => { if (alive) raf = requestAnimationFrame(tick) }, fail)
+        else fail()
         return
       }
       const dbg: Dbg | undefined = dbgRef.current ? { patches: [], points: [] } : undefined
       const r = analyzeFrame(px, { face, hands, pose }, cal, dbg)
       frames.current = [...frames.current, r].slice(-CFG.vote.window)
-      setLive({ voted: voteAll(frames.current), frame: r, count: frames.current.length })
+      setLive({ voted: voteAll(frames.current), frame: r, count: frames.current.length, lm: { face, hands, pose, w, h }, at: Date.now() })
       const ov = overlay.current
       if (ov) { if (dbg) drawDebug(ov, w, h, dbg, r, fps, mirRef.current); else if (ov.width) ov.width = 0 }
     }
@@ -239,12 +265,15 @@ export function useMirror(video: RefObject<HTMLVideoElement>, overlay: RefObject
   return {
     error,
     loading: on && !error && (!cam.ready || !models),
-    mirrored: cam.mirrored, canSwitch: cam.canSwitch, switchCamera: cam.switchCamera,
+    mirrored, canSwitch: cam.canSwitch, switchCamera: cam.switchCamera,
+    cameras: cam.cameras, currentCamera: cam.current, selectCamera: cam.selectCamera,
     live,
     /** Forget the frames seen so far (start of the countdown). */
     reset: useCallback(() => { frames.current = []; setLive(l => (l ? { ...l, count: 0 } : l)) }, []),
     /** The voted result over the current window. */
     snapshot: useCallback(() => ({ verdicts: voteAll(frames.current), count: frames.current.length }), []),
     retry: useCallback(() => { if (cam.error) cam.retry(); if (modelErr) load() }, [cam, modelErr, load]),
+    /** Reopen the camera (and reload the models if they failed) even without an error: the station's frozen-video watchdog. */
+    restart: useCallback(() => { cam.retry(); if (modelErr) load() }, [cam, modelErr, load]),
   }
 }

@@ -1,6 +1,6 @@
 /* Hand-made checks for src/mirror/checks.ts — run with:  npm run test:mirror   (Node ≥ 22.6 strips the types) */
 import {
-  CFG, analyzeFrame, checkGloves, checkGown, checkMask, classify, colorDist, defaultCalibration, faceSkin, hexToRgb,
+  CFG, analyzeFrame, checkGloves, checkGown, checkHead, checkMask, classify, colorDist, defaultCalibration, faceSkin, hexToRgb,
   coach, isSkinLike, overall, parseCalibration, prepCalibration, rgbToHex, rgbToHsv, rgbToLab, vote,
   type Pixels, type Pt, type Rgb, type Verdict,
 } from '../src/mirror/checks.ts'
@@ -44,6 +44,7 @@ t('classify: bare hand = skin', classify(SKIN, cal.gloves, CFG.gloves.match, rgb
 
 /* ---------- mask ---------- */
 const FACE_PTS: Record<number, [number, number]> = {
+  10: [0.5, 0.14], 152: [0.5, 0.44], 54: [0.43, 0.16], 284: [0.57, 0.16],
   234: [0.4, 0.3], 454: [0.6, 0.3], 151: [0.5, 0.17], 108: [0.46, 0.18], 337: [0.54, 0.18],
   1: [0.5, 0.3], 4: [0.5, 0.285], 0: [0.5, 0.345], 17: [0.5, 0.375], 61: [0.47, 0.355], 291: [0.53, 0.355], 199: [0.5, 0.41], 175: [0.5, 0.425],
 }
@@ -77,6 +78,24 @@ t('blue cap on forehead (skin ref = mask colour) → not ok', (() => {
   const p = faceImg(MASK, MASK, MASK); for (const i of [151, 108, 337]) paint(p, FACE_PTS[i][0], FACE_PTS[i][1], 12, MASK)
   return mask(p).state !== 'ok'
 })())
+
+/* ---------- head cover ---------- */
+const CAP = hexToRgb('#9CC3E6'), HAIR: Rgb = [45, 32, 25], GREEN_CAP: Rgb = [70, 160, 90]
+/** top: the crown above the hairline · sides: around the temples */
+function headImg(top: Rgb, sides: Rgb) {
+  const p = faceImg(MASK, MASK, MASK)
+  for (let y = 0.02; y <= 0.13; y += 0.02) for (let x = 0.36; x <= 0.64; x += 0.02) paint(p, x, y, 8, sides)
+  for (let y = 0.02; y <= 0.13; y += 0.02) for (let x = 0.46; x <= 0.54; x += 0.02) paint(p, x, y, 8, top)
+  return p
+}
+const head = (p: Pixels, f = face()) => checkHead(p, f, cal, faceSkin(p, f))
+t('head cover on → ok', head(headImg(CAP, CAP)).state === 'ok', head(headImg(CAP, CAP)))
+t('hair showing at the temples → wrong «الشعر باين»', (v => v.state === 'wrong' && v.msg === 'head_hair')(head(headImg(CAP, HAIR))), head(headImg(CAP, HAIR)))
+t('no head cover (hair) → missing', (v => v.state === 'missing' && v.msg === 'head_none')(head(headImg(HAIR, HAIR))), head(headImg(HAIR, HAIR)))
+t('uncalibrated green cover → uncertain, never ok or ✗', head(headImg(GREEN_CAP, GREEN_CAP)).state === 'uncertain')
+t('head cut off by the top of the frame → «ارجع لورا»', head(headImg(CAP, CAP), face().map(p => ({ ...p, y: p.y - 0.1 }))).msg === 'head_cut')
+t('no face → head uncertain', checkHead(img(BG), null, cal, null).msg === 'face_not_found')
+t('green cover calibrated → ok', (() => { const p = headImg(GREEN_CAP, GREEN_CAP), f = face(); return checkHead(p, f, prepCalibration({ ...defaultCalibration(), head: ['#46A05A'] }), faceSkin(p, f)).state === 'ok' })())
 
 /* ---------- gloves ---------- */
 function hand(x: number): Pt[] {
@@ -118,9 +137,11 @@ t('green scrubs → missing', gw(bodyImg(GREEN_SCRUBS, GREEN_SCRUBS)).msg === 'g
 t('shoulders not visible → uncertain', gw(bodyImg(GOWN, GOWN), pose(0.2)).msg === 'body_not_visible')
 
 /* ---------- whole frame + lighting ---------- */
-t('dark frame → all uncertain "dark"', (r => r.mask.msg === 'dark' && r.gown.msg === 'dark' && r.gloves.msg === 'dark')(analyzeFrame(img([20, 20, 25]), { face: face(), hands: [hand(0.2), hand(0.8)], pose: pose() }, cal)))
+t('dark frame → all uncertain "dark"', (r => r.head.msg === 'dark' && r.mask.msg === 'dark' && r.gown.msg === 'dark' && r.gloves.msg === 'dark')(analyzeFrame(img([20, 20, 25]), { face: face(), hands: [hand(0.2), hand(0.8)], pose: pose() }, cal)))
 t('bright frame → "bright"', analyzeFrame(img([250, 250, 250]), {}, cal).mask.msg === 'bright')
-t('empty frame → nothing seen', (r => !r.seen && r.mask.state === 'uncertain')(analyzeFrame(img(BG), { hands: [] }, cal)))
+t('empty frame → nothing seen, no body', (r => !r.seen && !r.body && r.mask.state === 'uncertain')(analyzeFrame(img(BG), { hands: [] }, cal)))
+t('face + shoulders → body present (station auto-start)', analyzeFrame(bodyImg(GOWN, GOWN), { face: face(), pose: pose(), hands: [] }, cal).body && !analyzeFrame(bodyImg(GOWN, GOWN), { face: face(), pose: pose(0.2), hands: [] }, cal).body)
+t('per-hand states for the station boxes', (r => r.hands.join() === 'gloved,bare')(analyzeFrame(handsImg(GLOVE, SKIN), { hands: [hand(0.2), hand(0.8)] }, cal)))
 
 /* ---------- voting ---------- */
 const OK: Verdict = { state: 'ok', msg: 'ok_mask' }, NOSE: Verdict = { state: 'wrong', msg: 'mask_under_nose' }, FACE_LOST: Verdict = { state: 'uncertain', msg: 'face_not_found' }
@@ -132,16 +153,20 @@ t('12 wrong / 8 ok → wrong', vote([...rep(NOSE, 12), ...rep(OK, 8)]).msg === '
 t('short window of ok frames can never be ok', vote(rep(OK, 12)).state !== 'ok')
 t('very short window → waiting', vote(rep(OK, 3)).msg === 'waiting')
 t('only last 20 frames count', vote([...rep(NOSE, 30), ...rep(OK, 20)]).state === 'ok')
-t('overall pass / fail / uncertain', overall({ mask: OK, gown: OK, gloves: OK }) === 'pass' && overall({ mask: NOSE, gown: OK, gloves: FACE_LOST }) === 'fail' && overall({ mask: OK, gown: FACE_LOST, gloves: OK }) === 'uncertain')
+const HEAD_OK: Verdict = { state: 'ok', msg: 'ok_head' }, NO_HEAD: Verdict = { state: 'missing', msg: 'head_none' }
+t('overall pass / fail / uncertain', overall({ head: HEAD_OK, mask: OK, gown: OK, gloves: OK }) === 'pass' && overall({ head: HEAD_OK, mask: NOSE, gown: OK, gloves: FACE_LOST }) === 'fail' && overall({ head: HEAD_OK, mask: OK, gown: FACE_LOST, gloves: OK }) === 'uncertain')
+t('overall ignores items switched off on the station', overall({ head: NO_HEAD, mask: OK, gown: OK, gloves: OK }, ['mask', 'gown', 'gloves']) === 'pass' && overall({ head: NO_HEAD, mask: OK, gown: OK, gloves: OK }) === 'fail')
 
 /* ---------- live coaching ---------- */
 const GOWN_OK: Verdict = { state: 'ok', msg: 'ok_gown' }, GLOVES_OK: Verdict = { state: 'ok', msg: 'ok_gloves' }, NO_GOWN: Verdict = { state: 'missing', msg: 'gown_none' }
-t('coach: next item follows donning order (gown → mask → gloves)', coach({ mask: NOSE, gown: GOWN_OK, gloves: FACE_LOST }).next === 'mask' && coach({ mask: OK, gown: NO_GOWN, gloves: FACE_LOST }).next === 'gown')
-t('coach: all ok → nothing next', coach({ mask: OK, gown: GOWN_OK, gloves: GLOVES_OK }).next === null)
-t('coach: gloves on before gown → order warning', coach({ mask: OK, gown: NO_GOWN, gloves: GLOVES_OK }).order && !coach({ mask: OK, gown: GOWN_OK, gloves: GLOVES_OK }).order)
+t('coach: donning order head cover → mask → gown → gloves', coach({ head: NO_HEAD, mask: NOSE, gown: GOWN_OK, gloves: FACE_LOST }).next === 'head' && coach({ head: HEAD_OK, mask: NOSE, gown: NO_GOWN, gloves: FACE_LOST }).next === 'mask' && coach({ head: HEAD_OK, mask: OK, gown: NO_GOWN, gloves: FACE_LOST }).next === 'gown')
+t('coach: skips items switched off', coach({ head: NO_HEAD, mask: NOSE, gown: GOWN_OK, gloves: FACE_LOST }, ['mask', 'gown', 'gloves']).next === 'mask')
+t('coach: all ok → nothing next', coach({ head: HEAD_OK, mask: OK, gown: GOWN_OK, gloves: GLOVES_OK }).next === null)
+t('coach: gloves on before gown → order warning', coach({ head: HEAD_OK, mask: OK, gown: NO_GOWN, gloves: GLOVES_OK }).order && !coach({ head: HEAD_OK, mask: OK, gown: GOWN_OK, gloves: GLOVES_OK }).order)
 
 /* ---------- calibration storage ---------- */
 t('garbage calibration → defaults', JSON.stringify(parseCalibration('{oops')) === JSON.stringify(defaultCalibration()))
+t('old calibration without head cover → head gets defaults', (c => c.head.length === 2 && c.mask.join() === '#111111')(parseCalibration(JSON.stringify({ mask: ['#111111'] }))))
 t('keeps valid colours, max 3, drops bad', (c => c.mask.join() === '#111111,#222222,#333333' && c.gown.length === 2 && c.pin === '1234')(parseCalibration(JSON.stringify({ mask: ['#111111', 'red', '#222222', '#333333', '#444444'], gown: [], pin: '1234' }))))
 
 console.log(failed ? `\n${failed} failed` : '\nall passed')

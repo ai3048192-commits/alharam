@@ -62,8 +62,16 @@ const ERR: Record<string, string> = {
   bad_state: 'نتيجة الفحص مش مظبوطة. جرب تاني.',
 }
 
-export const MIRROR_ITEMS: Record<MirrorItem, string> = { mask: 'الماسك', gown: 'الجاون', gloves: 'الجوانتي' }
+export const MIRROR_ITEMS: Record<MirrorItem, string> = { head: 'غطا الراس', mask: 'الماسك', gown: 'الجاون', gloves: 'الجوانتي' }
+export const MIRROR_ITEMS_EN: Record<MirrorItem, string> = { head: 'Head cover', mask: 'Mask', gown: 'Gown', gloves: 'Gloves' }
+/** Fixed note: what the camera cannot see (goggles are transparent, N95 seal and gown ties are invisible). */
+export const MIRROR_LIMITS = 'الجهاز مش بيقدر يتأكد من النضارة ولا إحكام الـ N95 ولا ربط الجاون من ورا. اتأكد منهم بنفسك.'
 export const MIRROR_MSG: Record<MirrorMsg, string> = {
+  ok_head: 'غطا الراس مغطي الشعر.',
+  head_none: 'غطا الراس مش لابسه',
+  head_hair: 'الشعر باين من تحت غطا الراس',
+  head_cut: 'ارجع لورا شوية عشان راسك تبان',
+  head_unknown: 'مش قادر أتأكد من غطا الراس. لو لونه مختلف اطلب معايرة الألوان.',
   ok_mask: 'الماسك مغطي الأنف والبق والدقن.',
   ok_gown: 'الجاون لابسه ومغطي الدراعات.',
   ok_gloves: 'الجوانتي في الإيدين الاتنين.',
@@ -89,6 +97,8 @@ export const MIRROR_MSG: Record<MirrorMsg, string> = {
 }
 /** «اعمل كده»: how to fix each mistake (only for ✗ results). */
 export const MIRROR_FIX: Partial<Record<MirrorMsg, string>> = {
+  head_none: 'البس غطا راس يغطي الشعر كله لحد الودان.',
+  head_hair: 'دخّل الشعر كله جوه غطا الراس من قدام ومن الجناب.',
   mask_under_nose: 'ارفع الماسك لحد ما يغطي الأنف، واضغط السلك اللي فوق على عضمة الأنف.',
   mask_under_mouth: 'ارفع الماسك يغطي البق والأنف، والسلك فوق على الأنف.',
   mask_chin: 'افرد الماسك لتحت لحد ما يغطي تحت الدقن.',
@@ -99,13 +109,25 @@ export const MIRROR_FIX: Partial<Record<MirrorMsg, string>> = {
   gloves_none: 'البس الجوانتي آخر حاجة، واسحبه فوق كم الجاون.',
   hand_bare: 'البس جوانتي في الإيد التانية، واسحبه فوق كم الجاون.',
 }
-/** Next step while putting PPE on, in the right order (gown → mask → gloves). */
+/** Next step while putting PPE on, in donning order (head cover → mask → gown → gloves). */
 export const MIRROR_NEXT: Record<MirrorItem, string> = {
-  gown: 'الخطوة الجاية: البس الجاون',
+  head: 'الخطوة الجاية: البس غطا الراس',
   mask: 'الخطوة الجاية: البس الماسك',
+  gown: 'الخطوة الجاية: البس الجاون',
   gloves: 'الخطوة الجاية: البس الجوانتي (آخر حاجة)',
 }
-export const MIRROR_ORDER = 'الترتيب الصح: الجاون ← الماسك ← الجوانتي آخر حاجة عشان يتسحب فوق كم الجاون.'
+export const MIRROR_ORDER = 'الترتيب الصح: غطا الراس ← الماسك ← الجاون ← الجوانتي آخر حاجة عشان يتسحب فوق كم الجاون.'
+/** Smart PPE Check station: where to get a missing item (the «PPE Corner» shelf next to the screen). */
+export const KIOSK_SHELF: Record<MirrorItem, string> = {
+  head: 'خد غطا راس من الرف اللي جنبك',
+  mask: 'خد ماسك من الرف اللي جنبك',
+  gown: 'خد جاون من الرف اللي جنبك',
+  gloves: 'خد جوانتي مقاسك من الرف (S / M / L)',
+}
+/** True when the request failed because there is no (or too weak a) connection. */
+export const isNetworkError = (e: unknown) =>
+  (typeof navigator !== 'undefined' && navigator.onLine === false) || /Failed to fetch|NetworkError|Load failed|fetch failed/i.test(e instanceof Error ? e.message : String(e))
+
 export function errorText(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e)
   for (const k of Object.keys(ERR)) if (m.includes(k)) return ERR[k]

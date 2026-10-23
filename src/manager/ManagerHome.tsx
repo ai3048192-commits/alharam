@@ -37,9 +37,20 @@ type Dash = {
   people: { name: string; dept: string; role: string; games: number; wins: number; avg: number; last: string }[]
   spot: { games: number; avg_found: number; avg_pct?: number; items: { id: string; title: string; scene: string; n: number; rate: number }[] }
   roster: { id: number; name: string; dept: string; played: boolean }[]
-  mirror?: { checks: number; pass_pct: number; items: Record<'mask' | 'gown' | 'gloves', { ok: number; bad: number; unsure: number }> }
+  /** head is only there once fix_07_kiosk.sql has run */
+  mirror?: { checks: number; pass_pct: number; items: Partial<Record<MirrorItem, ItemStat>> }
+  /** Smart PPE Check station results (anonymous): admins only, null for department heads */
+  kiosk?: { checks: number; today: number; pass_pct: number; items: Partial<Record<MirrorItem, ItemStat>>; events: { event: string; checks: number; pass_pct: number; last: string }[] } | null
 }
 const PART = { iso: 'نوع العزل', ppe: 'الواقيات', hand: 'نظافة الإيدين' }
+type MirrorItem = keyof typeof MIRROR_ITEMS
+type ItemStat = { n?: number; ok: number; bad: number; unsure: number }
+/** Items that have data (n = checks that included the item), most often missing/wrong first. */
+const ranked = (items?: Partial<Record<MirrorItem, ItemStat>>) => (Object.keys(MIRROR_ITEMS) as MirrorItem[])
+  .flatMap(k => { const x = items?.[k]; return x && (x.n ?? 1) > 0 ? [{ k, ...x }] : [] }).sort((a, b) => b.bad - a.bad)
+function ItemBars({ rows }: { rows: ReturnType<typeof ranked> }) {
+  return <div className="miss">{rows.map(x => <div className="it" key={x.k}><span><b>{MIRROR_ITEMS[x.k]}</b></span><span className="num small muted">ناقص/غلط {ar(x.bad)}٪ · صح {ar(x.ok)}٪ · مش متأكد {ar(x.unsure)}٪</span><span className="t"><i style={{ width: x.bad + '%' }} /></span></div>)}</div>
+}
 
 export default function ManagerHome() {
   const { manager, depts, signOutManager } = useSession()
@@ -58,7 +69,8 @@ export default function ManagerHome() {
   if (!d) return <Loading />
 
   const spotItems = [...d.spot.items].sort((a, b) => a.rate - b.rate).slice(0, 10)
-  const mirrorItems = d.mirror ? (Object.keys(MIRROR_ITEMS) as (keyof typeof MIRROR_ITEMS)[]).map(k => ({ k, ...d.mirror!.items[k] })).sort((a, b) => b.bad - a.bad) : []
+  const mirrorItems = ranked(d.mirror?.items)
+  const kioskItems = ranked(d.kiosk?.items)
   return (
     <div className="stack">
       <div className="mhead"><h2>رئيس القسم</h2><Link className="linkbtn" to="/">الرئيسية</Link></div>
@@ -102,17 +114,35 @@ export default function ManagerHome() {
       <div className="card sect"><h3>المراية الذكية</h3>
         {d.mirror && d.mirror.checks > 0 ? <>
           <p className="small muted" style={{ fontWeight: 700, marginBottom: 10 }}>{ar(d.mirror.checks)} فحص · عدّى من غير ولا غلطة {ar(d.mirror.pass_pct)}٪</p>
-          {mirrorItems[0].bad > 0 && <p className="small" style={{ fontWeight: 800, marginBottom: 6 }}>أكتر حاجة ناقصة أو مش مظبوطة: {MIRROR_ITEMS[mirrorItems[0].k]}</p>}
-          <div className="miss">{mirrorItems.map(x => <div className="it" key={x.k}><span><b>{MIRROR_ITEMS[x.k]}</b></span><span className="num small muted">ناقص/غلط {ar(x.bad)}٪ · صح {ar(x.ok)}٪ · مش متأكد {ar(x.unsure)}٪</span><span className="t"><i style={{ width: x.bad + '%' }} /></span></div>)}</div>
-        </> : <p className="muted">{d.mirror ? 'لسه محدش عمل فحص.' : 'شغّل supabase/fix_06_mirror.sql عشان تظهر النتايج هنا.'}</p>}
-        <Link className="btn white sm" to="/mirror/calibrate" style={{ marginTop: 10 }}>معايرة ألوان الكاميرا</Link>
+          {mirrorItems[0]?.bad > 0 && <p className="small" style={{ fontWeight: 800, marginBottom: 6 }}>أكتر حاجة ناقصة أو مش مظبوطة: {MIRROR_ITEMS[mirrorItems[0].k]}</p>}
+          <ItemBars rows={mirrorItems} />
+        </> : <p className="muted">{d.mirror ? 'لسه محدش عمل فحص.' : 'شغّل supabase/fix_07_kiosk.sql عشان تظهر النتايج هنا.'}</p>}
+        {d.mirror && !d.mirror.items.head && <p className="small muted" style={{ marginTop: 8 }}>عشان أرقام غطا الراس والمحطة تظهر، شغّل supabase/fix_07_kiosk.sql.</p>}
+        <div className="row" style={{ marginTop: 10 }}>
+          <Link className="btn white sm" to="/mirror/calibrate">معايرة ألوان الكاميرا</Link>
+          <Link className="btn white sm" to="/kiosk">محطة Smart PPE Check</Link>
+          <Link className="btn white sm" to="/kiosk/print">لافتات المحطة</Link>
+        </div>
       </div>
+
+      {d.kiosk && <div className="card sect"><h3>محطة Smart PPE Check</h3>
+        {d.kiosk.checks > 0 ? <>
+          <p className="small muted" style={{ fontWeight: 700, marginBottom: 10 }}>{ar(d.kiosk.checks)} فحص (النهارده {ar(d.kiosk.today)}) · عدّى من غير ولا غلطة {ar(d.kiosk.pass_pct)}٪</p>
+          {kioskItems[0]?.bad > 0 && <p className="small" style={{ fontWeight: 800, marginBottom: 6 }}>أكتر حاجة ناقصة أو مش مظبوطة: {MIRROR_ITEMS[kioskItems[0].k]}</p>}
+          <ItemBars rows={kioskItems} />
+          {d.kiosk.events.length > 0 && <div className="scroll" style={{ marginTop: 10 }}><table className="tbl">
+            <thead><tr><th>المحطة / الحدث</th><th className="c">فحوصات</th><th className="c">عدّى</th></tr></thead>
+            <tbody>{d.kiosk.events.slice(0, 8).map(e => <tr key={e.event}><td><b>{e.event || 'من غير اسم'}</b></td><td className="c num">{ar(e.checks)}</td><td className="c num">{ar(e.pass_pct)}٪</td></tr>)}</tbody>
+          </table></div>}
+        </> : <p className="muted">لسه مفيش فحوصات من المحطة.</p>}
+        <p className="small muted" style={{ marginTop: 8 }}>نتايج المحطة من غير أسماء، وبتظهر للأدمن بس.</p>
+      </div>}
 
       <div className="card sect"><h3>مين لعب ومين لأ</h3>
         {d.roster.length > 0 && <>
           <p className="small" style={{ fontWeight: 800 }}><span style={{ color: 'var(--mint-dk)' }}>لعبوا: {ar(d.roster.filter(r => r.played).length)}</span> · <span style={{ color: 'var(--coral-dk)' }}>لسه: {ar(d.roster.filter(r => !r.played).length)}</span></p>
           <div className="rost">{d.roster.map(r => <span key={r.id} className={r.played ? 'y' : 'n'}>{r.played ? '✓' : '✗'} {r.name}
-            <button className="x" aria-label={'شيل ' + r.name} onClick={async () => { await rpc('roster_remove', { p_id: r.id }); load() }}>×</button></span>)}</div>
+            <button className="x" aria-label={'شيل ' + r.name} onClick={async () => { try { await rpc('roster_remove', { p_id: r.id }); load() } catch (e) { setErr(errorText(e)) } }}>×</button></span>)}</div>
         </>}
         <Field label="ضيف أسماء الفريق (اسم في كل سطر)"><textarea id="roster" value={names} onChange={e => setNames(e.target.value)} placeholder="لازم الاسم يتكتب بنفس الطريقة اللي اللاعب كتبها" /></Field>
         <button className="btn white sm" style={{ marginTop: 8 }} disabled={!names.trim() || (manager.is_admin && dept === '')} onClick={async () => {

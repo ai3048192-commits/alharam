@@ -1,0 +1,54 @@
+/* /kiosk/print — printable signs for the station. Sizes use container units, so the on-screen preview and the paper match. */
+body:has(.kprint) #app{max-width:none}
+.kprint{--k-blue:#1E4FA3;--k-blue-dk:#143A7C;--k-yellow:#FFC93C;--k-ink:#0B1F44;
+  display:flex;flex-direction:column;align-items:center;gap:24px;color:var(--k-ink);font-family:var(--body);
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+.kp-controls{width:min(100%,640px)}
+.kp-sheet{position:relative;background:#fff;box-shadow:0 6px 0 rgba(40,10,70,.22);border-radius:8px;overflow:hidden;container-type:inline-size;display:flex;flex-direction:column}
+.kp-sheet .svgw{display:contents}
+
+/* 1) header strip: two copies on a portrait page, cut on the dashed line (every page is portrait:
+      with mixed orientations Chrome lays the whole print out at the first page's width and crops the others) */
+.kp-strip-in{height:50%;container-type:inline-size;background:var(--k-blue);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3cqw;text-align:center;padding:4cqw}
+.kp-strip-in+.kp-strip-in{border-top:3px dashed #fff}
+.kp-strip h1{font-family:var(--display);font-weight:400;direction:ltr;font-size:11cqw;line-height:1}
+.kp-strip .sub{font-weight:800;font-size:4cqw}
+.kp-strip .tag{direction:ltr;background:var(--k-yellow);color:var(--k-ink);font-weight:800;font-size:5.4cqw;border-radius:999px;padding:.2em 1em}
+.kp-steps{display:flex;align-items:center;gap:2.5cqw;direction:ltr}
+.kp-steps div{display:flex;flex-direction:column;align-items:center;gap:.6cqw;background:rgba(255,255,255,.12);border-radius:2cqw;padding:1.6cqw 3cqw}
+.kp-steps svg{width:7cqw;height:7cqw;color:var(--k-yellow)}
+.kp-steps b{font-family:var(--display);font-weight:400;font-size:4.4cqw;line-height:1}
+.kp-steps span{font-weight:700;font-size:2.4cqw}
+.kp-steps i{font-style:normal;font-size:5cqw;color:var(--k-yellow)}
+
+/* 2) floor sticker */
+.kp-floor{align-items:center;justify-content:center;gap:4cqw;padding:6cqw}
+.kp-dot{width:84cqw;aspect-ratio:1;border-radius:50%;background:var(--k-yellow);border:3.2cqw solid var(--k-blue);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2cqw}
+.kp-feet{display:flex;gap:7cqw;align-items:flex-end}
+.kp-feet svg{width:15cqw;height:auto}
+.kp-dot b{font-family:var(--display);font-weight:400;direction:ltr;font-size:10cqw;line-height:1;color:var(--k-blue)}
+.kp-dot span{font-weight:800;font-size:6cqw;color:var(--k-blue)}
+.kp-cut{font-weight:700;font-size:2.6cqw;color:#5A6B8C;text-align:center}
+
+/* 3) donning steps */
+.kp-don{padding:0}
+.kp-don header{background:var(--k-blue);color:#fff;padding:3.5cqw 6cqw;text-align:center}
+.kp-don header h1{font-family:var(--display);font-weight:400;direction:ltr;font-size:7cqw;line-height:1.05}
+.kp-don header p{font-weight:800;font-size:4cqw}
+.kp-don ol{list-style:none;margin:0;padding:3cqw 6cqw;display:flex;flex-direction:column;justify-content:center;gap:2cqw;flex:1;min-height:0}
+.kp-don li{display:grid;grid-template-columns:8cqw 13cqw 1fr;align-items:center;gap:3cqw;border:.6cqw solid #E2E9F6;border-radius:3cqw;padding:1.6cqw 3cqw}
+.kp-don .n{width:8cqw;height:8cqw;border-radius:50%;background:var(--k-yellow);display:grid;place-items:center;font-family:var(--display);font-size:6cqw}
+.kp-don li svg{width:13cqw;height:13cqw}
+.kp-don li b{display:block;font-family:var(--display);font-weight:400;font-size:5cqw;line-height:1.1}
+.kp-don li small{display:block;direction:ltr;text-align:right;font-weight:800;font-size:2.6cqw;letter-spacing:.08em;text-transform:uppercase;color:var(--k-blue)}
+.kp-don li em{display:block;font-style:normal;font-weight:700;font-size:3cqw;line-height:1.35}
+.kp-don footer{background:#FFF4D1;padding:2cqw 6cqw;font-weight:700;font-size:2.8cqw;text-align:center;line-height:1.45}
+.kp-don footer b{direction:ltr;display:inline-block;color:var(--k-blue)}
+
+@media print{
+  body:has(.kprint){background:#fff!important;margin:0}
+  body:has(.kprint) #app{padding:0!important;margin:0}
+  .kp-controls{display:none!important}
+  .kprint{gap:0}
+  .kp-sheet{box-shadow:none;border-radius:0;break-after:page;width:var(--pw)!important;height:var(--ph)!important;aspect-ratio:auto!important}
+}

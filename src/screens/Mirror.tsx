@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
-import { rpc } from '../lib/supabase'
 import { useSession } from '../lib/session'
-import { errorText, initial, MIRROR_FIX, MIRROR_ITEMS, MIRROR_MSG, MIRROR_NEXT, MIRROR_ORDER } from '../lib/content'
+import { errorText, initial, MIRROR_FIX, MIRROR_ITEMS, MIRROR_LIMITS, MIRROR_MSG, MIRROR_NEXT, MIRROR_ORDER } from '../lib/content'
 import { Confetti, ErrorBox } from '../components/ui'
 import { CFG, ITEMS, coach, overall, type ItemId, type Verdict } from '../mirror/checks'
 import { useMirror } from '../mirror/useMirror'
+import { saveResult, type SaveResult } from '../mirror/queue'
 import '../mirror/mirror.css'
 
 export const PRIVACY = 'الكاميرا بتتحلل على الجهاز ده بس، ومفيش أي صورة بتتحفظ أو بتتبعت.'
-const N95_NOTE = 'الجهاز مش بيقدر يتأكد من إحكام الـ N95 ولا ربط الجاون من ورا. اتأكد منهم بنفسك أو مع المشرفة.'
+const SAVED_NOTE = { saved: 'النتيجة اتسجلت (من غير أي صورة).', queued: 'مفيش نت دلوقتي. النتيجة متحفظة على الجهاز وهتتبعت لوحدها لما النت يرجع.', failed: 'مقدرناش نحفظ النتيجة.' }
 const STATE_LABEL = { ok: 'صح', missing: 'ناقص', wrong: 'غلط', uncertain: 'مش متأكد' }
 const icon = (v: Verdict) => v.msg === 'waiting' ? ['wait', '…'] : v.state === 'ok' ? ['ok', '✓'] : v.state === 'uncertain' ? ['half', '⚠'] : ['no', '✗']
 
@@ -71,7 +71,7 @@ export default function Mirror() {
   const overlay = useRef<HTMLCanvasElement>(null)
   const m = useMirror(video, overlay, on, debug)
   const [party, setParty] = useState(0)
-  const [saved, setSaved] = useState<boolean | null>(null)
+  const [saved, setSaved] = useState<SaveResult | null>(null)
   const savedRun = useRef(false)   // one saved result per camera session
 
   const v = m.live?.voted
@@ -80,12 +80,12 @@ export default function Mirror() {
   const c = v && full ? coach(v) : null
   const pass = o === 'pass'
 
-  // only players who already entered a name + department are saved (for the department head's page); everyone else just gets the coaching
+  // saved for the department head only when this device has a name + department (the server checks); offline results wait on the device
   const save = useCallback((r: Record<ItemId, Verdict>) => {
-    if (!player || savedRun.current) return
+    if (savedRun.current) return
     savedRun.current = true
-    rpc('save_mirror_check', { p_mask: r.mask.state, p_gown: r.gown.state, p_gloves: r.gloves.state }).then(() => true, () => false).then(setSaved)
-  }, [player])
+    saveResult({ head: r.head.state, mask: r.mask.state, gown: r.gown.state, gloves: r.gloves.state }).then(setSaved)
+  }, [])
 
   const latest = useRef(v)
   latest.current = v
@@ -93,7 +93,7 @@ export default function Mirror() {
 
   const start = () => { savedRun.current = false; setSaved(null); setOn(true); window.scrollTo({ top: 0 }) }
   const stop = () => { if (v && o && o !== 'uncertain') save(v); setOn(false) }
-  const savedNote = saved !== null && <p className="saved">{saved ? 'النتيجة اتسجلت (من غير أي صورة).' : 'مقدرناش نحفظ النتيجة. اتأكد من الإنترنت.'}</p>
+  const savedNote = saved && saved !== 'skipped' && <p className="saved">{SAVED_NOTE[saved]}</p>
 
   const title = <div className="mhead"><h2 onClick={tapTitle}>المراية الذكية{debug && <span className="small"> · debug</span>}</h2><Link className="linkbtn" to="/">رجوع</Link></div>
 
@@ -104,8 +104,8 @@ export default function Mirror() {
       <div className="card stack" style={{ gap: 8 }}>
         <h3 style={{ fontFamily: 'var(--display)', fontSize: 20 }}>إزاي تستخدمها</h3>
         <ol className="msteps">
-          <li>افتح الكاميرا واقف قدامها على بعد متر ونص تقريبًا، بحيث وشك وكتافك ودراعاتك يبانوا.</li>
-          <li>البس الواقيات قدامها بالترتيب: الجاون، بعده الماسك، والجوانتي آخر حاجة.</li>
+          <li>افتح الكاميرا واقف قدامها على بعد متر ونص تقريبًا، بحيث راسك وكتافك ودراعاتك يبانوا.</li>
+          <li>البس الواقيات قدامها بالترتيب: غطا الراس، بعده الماسك، بعده الجاون، والجوانتي آخر حاجة.</li>
           <li>وانت بتلبس، هتقولك على طول كل حاجة لابسها صح ولا غلط، ولو غلط تصلحها إزاي.</li>
           <li>للجوانتي: ارفع إيديك الاتنين جنب كتافك وكفوفك ناحية الكاميرا.</li>
         </ol>
@@ -139,7 +139,7 @@ export default function Mirror() {
           {c?.order && <p className="morder">{MIRROR_ORDER}</p>}
           {ITEMS.map((k, i) => <Row key={k} k={k} v={v && full ? v[k] : { state: 'uncertain', msg: 'waiting' }} first={i === 0} />)}
         </div>}
-        <div className="banner">{N95_NOTE}</div>
+        <div className="banner">{MIRROR_LIMITS}</div>
         {savedNote}
       </div>
       <button className="btn ghost" onClick={stop}>وقف الكاميرا</button>

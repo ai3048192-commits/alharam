@@ -144,7 +144,7 @@ export default function Cases() {
           <p className="small muted">كتبه: {c.author || '—'}{c.dept ? ' · ' + c.dept : ''}</p>
           {c.can_edit && <div className="row" style={{ marginTop: 6 }}>
             <button className="btn white sm" onClick={() => setEdit(c)}>تعديل</button>
-            <button className="btn ghost sm dark" onClick={async () => { await rpc('set_case_active', { p_id: c.id, p_active: !c.active }); load() }}>{c.active ? 'وقّفه' : 'رجّعه'}</button>
+            <button className="btn ghost sm dark" onClick={async () => { try { await rpc('set_case_active', { p_id: c.id, p_active: !c.active }); load() } catch (e) { setErr(errorText(e)) } }}>{c.active ? 'وقّفه' : 'رجّعه'}</button>
           </div>}
         </div>))}
     </div>

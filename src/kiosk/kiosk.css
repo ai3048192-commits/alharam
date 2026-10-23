@@ -1,0 +1,98 @@
+/* Smart PPE Check station. Everything is scoped under .kiosk (own hospital blue + yellow theme);
+   the station covers the whole screen and is readable from 1.5–3 m. Portrait first, adapts to landscape. */
+.kiosk{
+  --k-blue:#1E4FA3; --k-blue-dk:#143A7C; --k-blue-lt:#E8EFFB; --k-yellow:#FFC93C; --k-ink:#0B1F44; --k-white:#FFFFFF;
+  --k-ok:#1FB866; --k-bad:#E5383B; --k-warn:#FFC93C; --k-bg:#0F2E66;
+  position:fixed;inset:0;z-index:40;display:grid;grid-template-rows:auto 1fr auto;overflow:hidden;
+  background:var(--k-bg);color:var(--k-white);font-family:var(--body);direction:rtl;
+  padding:max(12px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  gap:1.4vmin;user-select:none;-webkit-user-select:none
+}
+.kiosk.nocursor,.kiosk.nocursor *{cursor:none!important}
+.kiosk.mm{--k-bg:#000}
+
+/* header: brand */
+.kiosk .khead{display:flex;align-items:center;justify-content:space-between;gap:2vmin}
+.kiosk .kbrand{display:flex;flex-direction:column;line-height:1.1;min-width:0}
+.kiosk .kbrand b{direction:ltr;text-align:right;font-family:var(--display);font-weight:400;font-size:clamp(28px,6vmin,72px);letter-spacing:.01em}
+.kiosk .kbrand span{font-weight:700;font-size:clamp(16px,2.6vmin,30px);opacity:.92}
+.kiosk .ktag{direction:ltr;background:var(--k-yellow);color:var(--k-ink);font-weight:800;border-radius:999px;padding:.35em 1em;font-size:clamp(14px,2.2vmin,26px);white-space:nowrap}
+
+/* main: camera + checklist (portrait: stacked; landscape: side by side) */
+.kiosk .kmain{position:relative;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:1.6vmin}
+@media (orientation:landscape){.kiosk .kmain{grid-template-rows:1fr;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)}}
+/* camera box (also used on the settings page): fits its container in both directions, turned/flipped like the analysed frame */
+.kcamwrap{position:relative;min-height:0;container-type:size;display:grid;place-items:center}
+.kcam{position:relative;border-radius:3vmin;overflow:hidden;background:#000;box-shadow:0 0 0 .6vmin rgba(255,255,255,.15)}
+.kcam video{position:absolute;left:50%;top:50%;object-fit:fill}
+.kcam canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.kiosk.mm .kcam{box-shadow:none}
+.kiosk.mm .kcam video{opacity:0}
+.kiosk .kguide{position:absolute;top:2vmin;left:2vmin;right:2vmin;text-align:center;font-weight:800;font-size:clamp(18px,3.6vmin,44px);background:rgba(11,31,68,.78);border-radius:2vmin;padding:.4em .6em}
+.kiosk.mm .kguide{background:transparent;color:var(--k-yellow)}
+.kiosk .kcount{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none;text-align:center}
+.kiosk .kcount b{display:block;font-family:var(--display);font-weight:400;font-size:clamp(90px,26vmin,320px);line-height:1;color:var(--k-yellow);text-shadow:0 .8vmin 0 rgba(0,0,0,.35);animation:kpop .45s cubic-bezier(.3,1.7,.5,1)}
+.kiosk .kcount span{font-weight:800;font-size:clamp(20px,4.4vmin,54px);background:rgba(11,31,68,.78);border-radius:999px;padding:.15em .8em}
+@keyframes kpop{from{transform:scale(.3);opacity:0}}
+
+/* checklist */
+.kiosk .klist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.4vmin;align-content:start}
+@media (orientation:landscape){.kiosk .klist{grid-template-columns:1fr}}
+.kiosk .krow{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:1.6vmin;background:var(--k-white);color:var(--k-ink);border-radius:2.2vmin;padding:1.2vmin 1.8vmin;border:.6vmin solid transparent;min-width:0}
+.kiosk .krow .ki{width:clamp(40px,8vmin,96px);height:clamp(40px,8vmin,96px)}
+.kiosk .krow .ki svg{width:100%;height:100%}
+.kiosk .krow .kn{min-width:0;line-height:1.15}
+.kiosk .krow .kn b{display:block;font-family:var(--display);font-weight:400;font-size:clamp(20px,4vmin,48px)}
+.kiosk .krow .kn small{display:block;direction:ltr;text-align:right;font-weight:800;font-size:clamp(12px,2vmin,22px);opacity:.65;text-transform:uppercase;letter-spacing:.06em}
+.kiosk .krow .kn em{display:block;font-style:normal;font-weight:700;font-size:clamp(13px,2.2vmin,26px);opacity:.85}
+.kiosk .krow .ks{width:clamp(40px,7.5vmin,90px);height:clamp(40px,7.5vmin,90px);border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:clamp(22px,4.6vmin,56px);color:#fff;background:#B8C3D9}
+.kiosk .krow.ok{border-color:var(--k-ok)} .kiosk .krow.ok .ks{background:var(--k-ok)}
+.kiosk .krow.bad{border-color:var(--k-bad)} .kiosk .krow.bad .ks{background:var(--k-bad)}
+.kiosk .krow.warn{border-color:var(--k-warn)} .kiosk .krow.warn .ks{background:var(--k-warn);color:var(--k-ink)}
+.kiosk.mm .krow{background:#000;color:#fff;border-width:.4vmin}
+.kiosk .klimits{grid-column:1/-1;font-weight:700;font-size:clamp(12px,1.9vmin,22px);opacity:.85;line-height:1.35}
+
+/* result banner (over the main area) */
+.kiosk .kresult{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;gap:1.6vmin;overflow:auto;padding:2.4vmin;border-radius:3vmin;animation:kup .35s ease-out}
+@keyframes kup{from{transform:translateY(4vmin);opacity:0}}
+.kiosk .kresult.pass{background:var(--k-ok);justify-content:center;align-items:center;text-align:center}
+.kiosk .kresult.fail{background:var(--k-bad)}
+.kiosk .kresult.unsure{background:#B9770E}
+.kiosk .kresult h1{font-family:var(--display);font-weight:400;direction:ltr;font-size:clamp(40px,10vmin,140px);line-height:1}
+.kiosk .kresult .kgo{font-weight:800;font-size:clamp(24px,5.4vmin,70px);line-height:1.25}
+.kiosk .kresult .kfix{display:grid;grid-template-columns:auto 1fr;gap:.4vmin 1.8vmin;align-items:center;background:#fff;color:var(--k-ink);border-radius:2.2vmin;padding:1.4vmin 1.8vmin}
+.kiosk .kresult .kfix .ki{grid-row:span 3;width:clamp(44px,9vmin,110px);height:clamp(44px,9vmin,110px)}
+.kiosk .kresult .kfix .ki svg{width:100%;height:100%}
+.kiosk .kresult .kfix b{font-family:var(--display);font-weight:400;font-size:clamp(22px,4.4vmin,54px)}
+.kiosk .kresult .kfix span{font-weight:800;font-size:clamp(16px,3vmin,36px)}
+.kiosk .kresult .kfix i{font-style:normal;font-weight:700;font-size:clamp(14px,2.6vmin,32px);color:#0E6E4F}
+.kiosk .kresult .kfix i.shelf{color:var(--k-blue)}
+.kiosk .kresult .kagain{font-weight:800;font-size:clamp(16px,3vmin,36px);text-align:center}
+
+/* idle */
+.kiosk .kidle{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3.2vmin;text-align:center;background:var(--k-bg)}
+.kiosk .kidle .kplay{width:clamp(110px,26vmin,320px);height:clamp(110px,26vmin,320px);animation:kpulse 2.2s ease-in-out infinite}
+@keyframes kpulse{50%{transform:scale(1.06)}}
+.kiosk .kidle h1{font-family:var(--display);font-weight:400;direction:ltr;font-size:clamp(48px,11vmin,150px);line-height:1;color:var(--k-yellow)}
+.kiosk .kidle p{font-weight:800;font-size:clamp(22px,4.6vmin,60px)}
+.kiosk .ksteps{display:flex;align-items:center;justify-content:center;gap:2vmin;direction:ltr;flex-wrap:wrap}
+.kiosk .ksteps div{display:flex;flex-direction:column;align-items:center;gap:.6vmin;background:rgba(255,255,255,.1);border-radius:2.4vmin;padding:1.6vmin 2.4vmin;min-width:16vmin}
+.kiosk .ksteps div svg{width:clamp(36px,8vmin,90px);height:clamp(36px,8vmin,90px);color:var(--k-yellow)}
+.kiosk .ksteps div b{font-family:var(--display);font-weight:400;font-size:clamp(22px,4.4vmin,54px)}
+.kiosk .ksteps div span{font-weight:700;font-size:clamp(13px,2.2vmin,26px);direction:rtl}
+.kiosk .ksteps i{font-style:normal;font-size:clamp(24px,5vmin,60px);color:var(--k-yellow)}
+.kiosk .kcounter{font-weight:800;font-size:clamp(16px,2.8vmin,34px);background:var(--k-yellow);color:var(--k-ink);border-radius:999px;padding:.3em 1.1em}
+.kiosk .kprivacy{font-weight:600;font-size:clamp(12px,1.9vmin,22px);opacity:.8;max-width:80vmin}
+
+/* recovering */
+.kiosk .krecover{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2vmin;text-align:center;background:var(--k-bg)}
+.kiosk .krecover b{font-family:var(--display);font-weight:400;font-size:clamp(32px,7vmin,90px)}
+.kiosk .krecover span{font-weight:700;font-size:clamp(14px,2.6vmin,30px);opacity:.85;max-width:80vmin}
+.kiosk .kspin{width:clamp(48px,10vmin,120px);height:clamp(48px,10vmin,120px);border-radius:50%;border:1.4vmin solid rgba(255,255,255,.2);border-top-color:var(--k-yellow);animation:rot .9s linear infinite}
+
+/* footer: tiny fallback controls */
+.kiosk .kfoot{display:flex;justify-content:space-between;align-items:center;gap:2vmin;font-size:clamp(11px,1.6vmin,18px);opacity:.6}
+.kiosk .kfoot nav{display:flex;gap:1vmin}
+.kiosk .kfoot button,.kiosk .kfoot a{border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:.4em .9em;font:inherit;font-weight:700;text-decoration:none;cursor:pointer}
+.kiosk .kfoot button:focus-visible,.kiosk .kfoot a:focus-visible{outline:3px solid var(--k-yellow)}
+@media (prefers-reduced-motion:reduce){.kiosk *{animation:none!important}}
