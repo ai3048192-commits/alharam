@@ -28,7 +28,7 @@ export function CamBox({ video, mirrored = true, onSwitch, maxVh = 68, children 
     return () => { v.removeEventListener('loadedmetadata', fit); v.removeEventListener('resize', fit) }
   }, [video])
   return (
-    <div className="mcam" style={{ aspectRatio: String(ratio), width: `min(100%, calc(${maxVh}vh * ${ratio}))` }}>
+    <div className="mcam" style={{ aspectRatio: String(ratio), width: `min(100%, calc(var(--cam-vh, ${maxVh}vh) * ${ratio}))` }}>
       <video ref={video} className={mirrored ? 'flip' : undefined} playsInline muted autoPlay />
       {children}
       {onSwitch && <button type="button" className="mswitch" onClick={onSwitch} aria-label="غيّر الكاميرا"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><path d="M9 13a3 3 0 0 1 5-2.2M15 13a3 3 0 0 1-5 2.2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><path d="M14 9v2h-2M10 17v-2h2" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg></button>}
@@ -93,6 +93,9 @@ export default function Mirror() {
 
   const start = () => { savedRun.current = false; setSaved(null); setOn(true); window.scrollTo({ top: 0 }) }
   const stop = () => { if (v && o && o !== 'uncertain') save(v); setOn(false) }
+  const [isFs, setIsFs] = useState(!!document.fullscreenElement)
+  useEffect(() => { const f = () => setIsFs(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f) }, [])
+  const fullscreen = () => { if (document.fullscreenElement) document.exitFullscreen?.(); else document.documentElement.requestFullscreen?.().catch(() => {}) }
   const savedNote = saved && saved !== 'skipped' && <p className="saved">{SAVED_NOTE[saved]}</p>
 
   const title = <div className="mhead"><h2 onClick={tapTitle}>المراية الذكية{debug && <span className="small"> · debug</span>}</h2><Link className="linkbtn" to="/">رجوع</Link></div>
@@ -128,7 +131,8 @@ export default function Mirror() {
       {player && <div className="hud"><div className="chipx"><div className="av" style={{ background: '#B8F0DC' }}>{initial(player.name)}</div><span className="nm">{player.name}</span></div></div>}
       {m.error && <ErrorBox text={errorText(m.error)} retry={m.retry} />}
       {/* the video stays mounted on errors so a retry has somewhere to attach the stream */}
-      <div hidden={!!m.error} className="stack">
+      {/* laptops / big screens: camera large on one side, results beside it (see .mwide in mirror.css) */}
+      <div hidden={!!m.error} className="stack mwide">
         <CamBox video={video} mirrored={m.mirrored} maxVh={52} onSwitch={m.canSwitch && !m.loading ? m.switchCamera : undefined}>
           <canvas ref={overlay} />
           {m.loading && <div className="mload"><div className="spin" aria-hidden="true" /><p>بنجهّز الكاميرا والفحص...</p><p className="small" style={{ opacity: .85 }}>{PRIVACY}</p></div>}
@@ -142,7 +146,10 @@ export default function Mirror() {
         <div className="banner">{MIRROR_LIMITS}</div>
         {savedNote}
       </div>
-      <button className="btn ghost" onClick={stop}>وقف الكاميرا</button>
+      <div className="row" style={{ flexWrap: 'nowrap' }}>
+        <button className="btn ghost" onClick={stop}>وقف الكاميرا</button>
+        {document.fullscreenEnabled && <button className="btn ghost" onClick={fullscreen}>{isFs ? 'صغّر الشاشة' : 'ملء الشاشة'}</button>}
+      </div>
     </div>
   )
 }
