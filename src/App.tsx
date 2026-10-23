@@ -7,6 +7,8 @@ import Profile from './screens/Profile'
 import NewGame from './screens/NewGame'
 import Game from './screens/Game'
 import Spot from './screens/Spot'
+import Mirror from './screens/Mirror'
+import MirrorCalibrate from './screens/MirrorCalibrate'
 import ManagerHome from './manager/ManagerHome'
 import Cases from './manager/Cases'
 
@@ -28,6 +30,8 @@ function Shell() {
       <Route path="/play/:mode" element={<NeedsProfile><NewGame /></NeedsProfile>} />
       <Route path="/g/:code" element={<NeedsProfile><Game /></NeedsProfile>} />
       <Route path="/spot" element={<NeedsProfile><Spot /></NeedsProfile>} />
+      <Route path="/mirror" element={<NeedsProfile><Mirror /></NeedsProfile>} />
+      <Route path="/mirror/calibrate" element={<MirrorCalibrate />} />
       <Route path="/manager" element={<ManagerHome />} />
       <Route path="/manager/cases" element={<Cases />} />
       <Route path="*" element={<Navigate to="/" replace />} />

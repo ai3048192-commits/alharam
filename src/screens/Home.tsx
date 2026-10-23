@@ -34,6 +34,7 @@ export default function Home() {
         <Mode to="/play/duel" id="duel" c="#FF9F1C" d="#D9780A" title="مبارزة" sub="العب وابعت التحدي لزميلك على واتساب" />
         <Mode to="/play/solo" id="solo" c="#D9C2FF" d="#7B4FC0" title="العب لوحدك" sub="٦ أوض، وحاول تكسر رقمك" />
         <Mode to="/spot" id="spot" c="#FFB3BD" d="#D63848" title="طلّع الغلطات" sub="صورة جديدة كل مرة. لاقي غلطات العدوى" isNew />
+        <Mode to="/mirror" id="mirror" c="#B8F0DC" d="#14936A" title="المراية الذكية" sub="اتأكد إنك لابس الواقيات صح قبل ما تدخل" isNew />
       </div>
       <ShareButton className="btn ghost" label="ابعت اللعبة لزمايلك" data={{ title: 'حارب العدوى', text: 'جرب لعبة «حارب العدوى»: مبارزة العزل ونظافة الإيدين 🚪', url: appUrl('/') }} />
       <Link className="btn ghost" to="/manager">{manager ? 'صفحة رئيس القسم' : 'دخول رئيس القسم'}</Link>

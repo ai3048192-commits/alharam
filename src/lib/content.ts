@@ -1,3 +1,5 @@
+import type { ItemId as MirrorItem, MsgId as MirrorMsg } from '../mirror/checks'
+
 export const DOOR_SECONDS = 45
 
 export type SignId = 'std' | 'contact' | 'droplet' | 'airborne' | 'contact_droplet' | 'airborne_contact' | 'enteric'
@@ -51,6 +53,37 @@ const ERR: Record<string, string> = {
   'Invalid login credentials': 'الإيميل أو الباسورد غلط.',
   'Anonymous sign-ins are disabled': 'لازم تفعّل Anonymous sign-ins في Supabase (Authentication → Sign In / Providers).',
   'Failed to fetch': 'مفيش اتصال بالإنترنت.',
+  cam_insecure: 'الكاميرا محتاجة لينك آمن (https). افتح اللعبة من اللينك الأصلي.',
+  cam_unsupported: 'المتصفح ده مش بيفتح الكاميرا (زي المتصفح اللي جوه فيسبوك أو إنستجرام). افتح اللينك في Chrome أو Safari أو Edge.',
+  cam_denied: 'مفيش إذن للكاميرا. اسمح للكاميرا من علامة القفل جنب اللينك (على الآيفون: الإعدادات ← Safari ← الكاميرا) وجرب تاني.',
+  cam_none: 'مش لاقيين كاميرا على الجهاز ده.',
+  cam_busy: 'الكاميرا مشغولة في برنامج تاني. اقفله وجرب تاني.',
+  models_failed: 'مقدرناش نحمّل ملفات الفحص. اتأكد من الإنترنت أول مرة وجرب تاني.',
+  bad_state: 'نتيجة الفحص مش مظبوطة. جرب تاني.',
+}
+
+export const MIRROR_ITEMS: Record<MirrorItem, string> = { mask: 'الماسك', gown: 'الجاون', gloves: 'الجوانتي' }
+export const MIRROR_MSG: Record<MirrorMsg, string> = {
+  ok_mask: 'الماسك مغطي الأنف والبق والدقن.',
+  ok_gown: 'الجاون لابسه ومغطي الدراعات.',
+  ok_gloves: 'الجوانتي في الإيدين الاتنين.',
+  mask_under_nose: 'الماسك نازل تحت الأنف. ارفعه يغطي الأنف.',
+  mask_under_mouth: 'الماسك نازل تحت البق. ارفعه يغطي البق والأنف.',
+  mask_none: 'مفيش ماسك',
+  mask_unknown: 'مش قادر أتأكد من الماسك. لو لونه مختلف اطلب معايرة الألوان.',
+  face_not_found: 'بص للكاميرا وقرّب شوية',
+  hands_two: 'ارفع إيديك الاتنين قدام الكاميرا',
+  hand_bare: 'إيد من غير جوانتي',
+  gloves_none: 'مفيش جوانتي في الإيدين',
+  gloves_unknown: 'مش قادر أتأكد من الجوانتي. خلي كفوفك ناحية الكاميرا.',
+  body_not_visible: 'ارجع لورا شوية عشان جسمك كله يبان',
+  gown_arms: 'الجاون لازم يغطي الدراعات',
+  gown_none: 'مش شايف جاون. لو لابسه ولونه مختلف، اطلب معايرة الألوان.',
+  gown_unknown: 'مش قادر أتأكد من الجاون. متحطش حاجة قدام صدرك.',
+  dark: 'الإضاءة ضعيفة',
+  bright: 'الإضاءة قوية قوي',
+  waiting: 'بيفحص...',
+  unsteady: 'ثبت مكانك شوية',
 }
 export function errorText(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e)

@@ -1,0 +1,27 @@
+/* Smart PPE mirror (camera screens). */
+.mcam{position:relative;margin:0 auto;width:100%;border-radius:22px;overflow:hidden;background:#1A0F33;box-shadow:0 7px 0 rgba(40,10,70,.3)}
+.mcam video{display:block;width:100%;height:100%;object-fit:cover}
+.mcam video.flip{transform:scaleX(-1)}
+.mcam .mswitch{position:absolute;top:10px;left:10px;z-index:3;width:44px;height:44px;border:0;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;display:grid;place-items:center}
+.mcam .mswitch svg{width:26px;height:26px}
+.mcam canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.mcam .mload{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#fff;font-weight:700;background:rgba(26,15,51,.7);text-align:center;padding:16px}
+.mcam .mcount{position:absolute;top:10px;left:0;right:0;text-align:center;color:#fff;pointer-events:none;text-shadow:0 3px 0 rgba(0,0,0,.35)}
+.mcam .mcount b{display:block;font-family:var(--display);font-weight:400;font-size:84px;line-height:1;animation:pop .4s cubic-bezier(.3,1.7,.5,1)}
+.mcam .mcount span{display:inline-block;background:rgba(0,0,0,.35);border-radius:20px;padding:2px 14px;font-weight:800}
+.mcam .mrows{position:absolute;left:8px;right:8px;bottom:8px;padding:4px 12px;background:rgba(255,255,255,.93)}
+.mrows .fbr,.mres .fbr{grid-template-columns:32px 1fr auto;padding:6px 0}
+.mrows .fbr .ic{width:32px;height:32px;border-radius:10px;font-size:17px}
+.mrows .fbr h4{font-size:15.5px}
+.mrows .fbr .why{font-size:13px;line-height:1.35}
+.mres .fbr{grid-template-columns:40px 1fr auto;padding:10px 0}
+.fbr .ic.wait{background:var(--line);color:var(--muted)}
+.mprivacy{display:flex;gap:10px;align-items:flex-start;background:#E3FFF4;color:var(--mint-dk);border-radius:14px;padding:10px 12px;font-weight:700;font-size:14.5px;box-shadow:0 4px 0 var(--mint-dk)}
+.mprivacy svg{flex:none;width:22px;height:22px;margin-top:2px}
+.msteps{margin:0;padding-inline-start:20px;font-weight:600;font-size:15px;display:flex;flex-direction:column;gap:4px}
+.mbox{position:absolute;left:35%;top:35%;width:30%;height:30%;border:3px dashed #fff;border-radius:14px;box-shadow:0 0 0 999px rgba(0,0,0,.35);pointer-events:none}
+.mbox.busy{border-style:solid;border-color:var(--mint)}
+.swatches{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.sw{display:flex;align-items:center;gap:6px;background:var(--card-2);border-radius:12px;padding:4px 6px 4px 10px;font-size:12.5px;font-weight:700;direction:ltr}
+.sw i{width:28px;height:28px;border-radius:8px;box-shadow:inset 0 0 0 2px rgba(0,0,0,.12)}
+.sw button{border:0;background:none;font-weight:800;font-size:16px;padding:0 4px}

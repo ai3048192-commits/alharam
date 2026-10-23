@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { rpc } from '../lib/supabase'
 import { useSession } from '../lib/session'
-import { ar, errorText } from '../lib/content'
+import { ar, errorText, MIRROR_ITEMS } from '../lib/content'
 import { Field, Loading } from '../components/ui'
 
 export function ManagerLogin() {
@@ -37,6 +37,7 @@ type Dash = {
   people: { name: string; dept: string; role: string; games: number; wins: number; avg: number; last: string }[]
   spot: { games: number; avg_found: number; avg_pct?: number; items: { id: string; title: string; scene: string; n: number; rate: number }[] }
   roster: { id: number; name: string; dept: string; played: boolean }[]
+  mirror?: { checks: number; pass_pct: number; items: Record<'mask' | 'gown' | 'gloves', { ok: number; bad: number; unsure: number }> }
 }
 const PART = { iso: 'نوع العزل', ppe: 'الواقيات', hand: 'نظافة الإيدين' }
 
@@ -57,6 +58,7 @@ export default function ManagerHome() {
   if (!d) return <Loading />
 
   const spotItems = [...d.spot.items].sort((a, b) => a.rate - b.rate).slice(0, 10)
+  const mirrorItems = d.mirror ? (Object.keys(MIRROR_ITEMS) as (keyof typeof MIRROR_ITEMS)[]).map(k => ({ k, ...d.mirror!.items[k] })).sort((a, b) => b.bad - a.bad) : []
   return (
     <div className="stack">
       <div className="mhead"><h2>رئيس القسم</h2><Link className="linkbtn" to="/">الرئيسية</Link></div>
@@ -95,6 +97,15 @@ export default function ManagerHome() {
         <p className="small muted" style={{ fontWeight: 700, marginBottom: 10 }}>{ar(d.spot.games)} لعبة · في المتوسط بيلاقوا {ar(d.spot.avg_pct ?? 0)}٪ من الغلطات</p>
         {d.spot.games > 0 && <><p className="small" style={{ fontWeight: 800, marginBottom: 6 }}>الغلطات اللي الناس مش بتلاحظها (من الأقل للأكتر):</p>
           <div className="miss">{spotItems.map(x => <div className="it" key={x.scene + x.id}><span><b>{x.title}</b> <span className="small muted">· {x.scene}</span></span><span className="num small muted">لاحظها {ar(x.rate)}٪ ({ar(x.n)} مرة)</span><span className="t"><i style={{ width: x.rate + '%', background: 'var(--mint)' }} /></span></div>)}</div></>}
+      </div>
+
+      <div className="card sect"><h3>المراية الذكية</h3>
+        {d.mirror && d.mirror.checks > 0 ? <>
+          <p className="small muted" style={{ fontWeight: 700, marginBottom: 10 }}>{ar(d.mirror.checks)} فحص · عدّى من غير ولا غلطة {ar(d.mirror.pass_pct)}٪</p>
+          {mirrorItems[0].bad > 0 && <p className="small" style={{ fontWeight: 800, marginBottom: 6 }}>أكتر حاجة ناقصة أو مش مظبوطة: {MIRROR_ITEMS[mirrorItems[0].k]}</p>}
+          <div className="miss">{mirrorItems.map(x => <div className="it" key={x.k}><span><b>{MIRROR_ITEMS[x.k]}</b></span><span className="num small muted">ناقص/غلط {ar(x.bad)}٪ · صح {ar(x.ok)}٪ · مش متأكد {ar(x.unsure)}٪</span><span className="t"><i style={{ width: x.bad + '%' }} /></span></div>)}</div>
+        </> : <p className="muted">{d.mirror ? 'لسه محدش عمل فحص.' : 'شغّل supabase/fix_06_mirror.sql عشان تظهر النتايج هنا.'}</p>}
+        <Link className="btn white sm" to="/mirror/calibrate" style={{ marginTop: 10 }}>معايرة ألوان الكاميرا</Link>
       </div>
 
       <div className="card sect"><h3>مين لعب ومين لأ</h3>
