@@ -25,3 +25,16 @@
 .sw{display:flex;align-items:center;gap:6px;background:var(--card-2);border-radius:12px;padding:4px 6px 4px 10px;font-size:12.5px;font-weight:700;direction:ltr}
 .sw i{width:28px;height:28px;border-radius:8px;box-shadow:inset 0 0 0 2px rgba(0,0,0,.12)}
 .sw button{border:0;background:none;font-weight:800;font-size:16px;padding:0 4px}
+/* live coaching card */
+.mlive{display:flex;flex-direction:column;gap:2px;transition:box-shadow .2s}
+.mlive h3{font-family:var(--display);font-size:24px;line-height:1.25;margin-bottom:8px}
+.mlive.pass{box-shadow:0 6px 0 var(--mint-dk),inset 0 0 0 3px var(--mint)}
+.mlive.pass h3{color:var(--mint-dk)}
+.mlive.fail{box-shadow:0 6px 0 var(--coral-dk),inset 0 0 0 3px var(--coral)}
+.mlive.fail h3{color:var(--coral-dk)}
+.mlive .fbr h4{font-size:18px}
+.mlive .fbr .why{font-size:15.5px;color:var(--ink);font-weight:700}
+.fbr .mfix{grid-column:2/-1;font-size:15px;font-weight:600;background:#E3FFF4;color:#0E6E4F;border-radius:10px;padding:6px 10px;margin-top:4px}
+.fbr .mfix b{font-weight:800}
+.morder{background:#FFE6CF;border-radius:12px;padding:8px 12px;font-weight:700;font-size:14.5px;margin-bottom:6px}
+.mcam .mpass{position:absolute;top:12px;right:12px;width:64px;height:64px;border-radius:50%;background:var(--mint);color:#fff;display:grid;place-items:center;font-size:38px;font-weight:800;box-shadow:0 4px 0 var(--mint-dk);animation:pop .4s cubic-bezier(.3,1.7,.5,1)}

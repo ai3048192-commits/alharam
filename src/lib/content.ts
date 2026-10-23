@@ -67,8 +67,9 @@ export const MIRROR_MSG: Record<MirrorMsg, string> = {
   ok_mask: 'الماسك مغطي الأنف والبق والدقن.',
   ok_gown: 'الجاون لابسه ومغطي الدراعات.',
   ok_gloves: 'الجوانتي في الإيدين الاتنين.',
-  mask_under_nose: 'الماسك نازل تحت الأنف. ارفعه يغطي الأنف.',
-  mask_under_mouth: 'الماسك نازل تحت البق. ارفعه يغطي البق والأنف.',
+  mask_under_nose: 'الماسك نازل تحت الأنف.',
+  mask_under_mouth: 'الماسك نازل على الدقن بس.',
+  mask_chin: 'الماسك مش نازل على الدقن.',
   mask_none: 'مفيش ماسك',
   mask_unknown: 'مش قادر أتأكد من الماسك. لو لونه مختلف اطلب معايرة الألوان.',
   face_not_found: 'بص للكاميرا وقرّب شوية',
@@ -77,7 +78,8 @@ export const MIRROR_MSG: Record<MirrorMsg, string> = {
   gloves_none: 'مفيش جوانتي في الإيدين',
   gloves_unknown: 'مش قادر أتأكد من الجوانتي. خلي كفوفك ناحية الكاميرا.',
   body_not_visible: 'ارجع لورا شوية عشان جسمك كله يبان',
-  gown_arms: 'الجاون لازم يغطي الدراعات',
+  gown_arms: 'الجاون مش مغطي الدراعات.',
+  gown_one_arm: 'دراع واحد مش متغطي بالكم.',
   gown_none: 'مش شايف جاون. لو لابسه ولونه مختلف، اطلب معايرة الألوان.',
   gown_unknown: 'مش قادر أتأكد من الجاون. متحطش حاجة قدام صدرك.',
   dark: 'الإضاءة ضعيفة',
@@ -85,6 +87,25 @@ export const MIRROR_MSG: Record<MirrorMsg, string> = {
   waiting: 'بيفحص...',
   unsteady: 'ثبت مكانك شوية',
 }
+/** «اعمل كده»: how to fix each mistake (only for ✗ results). */
+export const MIRROR_FIX: Partial<Record<MirrorMsg, string>> = {
+  mask_under_nose: 'ارفع الماسك لحد ما يغطي الأنف، واضغط السلك اللي فوق على عضمة الأنف.',
+  mask_under_mouth: 'ارفع الماسك يغطي البق والأنف، والسلك فوق على الأنف.',
+  mask_chin: 'افرد الماسك لتحت لحد ما يغطي تحت الدقن.',
+  mask_none: 'البس الماسك: السلك المعدن فوق على الأنف، وافرده لحد تحت الدقن.',
+  gown_none: 'البس الجاون الأول: يغطي من الرقبة للركبة، والكمين لحد الرسغ.',
+  gown_arms: 'دخّل دراعاتك في الكمين لحد الرسغ.',
+  gown_one_arm: 'دخّل دراعك في الكم لحد الرسغ.',
+  gloves_none: 'البس الجوانتي آخر حاجة، واسحبه فوق كم الجاون.',
+  hand_bare: 'البس جوانتي في الإيد التانية، واسحبه فوق كم الجاون.',
+}
+/** Next step while putting PPE on, in the right order (gown → mask → gloves). */
+export const MIRROR_NEXT: Record<MirrorItem, string> = {
+  gown: 'الخطوة الجاية: البس الجاون',
+  mask: 'الخطوة الجاية: البس الماسك',
+  gloves: 'الخطوة الجاية: البس الجوانتي (آخر حاجة)',
+}
+export const MIRROR_ORDER = 'الترتيب الصح: الجاون ← الماسك ← الجوانتي آخر حاجة عشان يتسحب فوق كم الجاون.'
 export function errorText(e: unknown): string {
   const m = e instanceof Error ? e.message : String(e)
   for (const k of Object.keys(ERR)) if (m.includes(k)) return ERR[k]

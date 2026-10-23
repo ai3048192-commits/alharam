@@ -1,7 +1,7 @@
 /* Hand-made checks for src/mirror/checks.ts — run with:  npm run test:mirror   (Node ≥ 22.6 strips the types) */
 import {
   CFG, analyzeFrame, checkGloves, checkGown, checkMask, classify, colorDist, defaultCalibration, faceSkin, hexToRgb,
-  isSkinLike, overall, parseCalibration, prepCalibration, rgbToHex, rgbToHsv, rgbToLab, vote,
+  coach, isSkinLike, overall, parseCalibration, prepCalibration, rgbToHex, rgbToHsv, rgbToLab, vote,
   type Pixels, type Pt, type Rgb, type Verdict,
 } from '../src/mirror/checks.ts'
 
@@ -65,6 +65,7 @@ t('mask on nose+mouth+chin → ok', mask(faceImg(MASK, MASK, MASK)).state === 'o
 t('mask on dark skin → ok', mask(faceImg(MASK, MASK, MASK, SKIN_DARK)).state === 'ok')
 t('mask under nose → wrong', (v => v.state === 'wrong' && v.msg === 'mask_under_nose')(mask(faceImg(SKIN, MASK, MASK))))
 t('mask on chin only → wrong', (v => v.state === 'wrong' && v.msg === 'mask_under_mouth')(mask(faceImg(SKIN, SKIN, MASK))))
+t('mask not down over the chin → wrong', (v => v.state === 'wrong' && v.msg === 'mask_chin')(mask(faceImg(MASK, MASK, SKIN))))
 t('no mask → missing', (v => v.state === 'missing' && v.msg === 'mask_none')(mask(faceImg(SKIN, SKIN, SKIN))))
 t('uncalibrated white mask → uncertain (never ok)', (v => v.state === 'uncertain' && v.msg === 'mask_unknown')(mask(faceImg(WHITE, WHITE, WHITE))), mask(faceImg(WHITE, WHITE, WHITE)))
 t('white mask after calibrating white → ok', (() => { const p = faceImg(WHITE, WHITE, WHITE), f = face(); return checkMask(p, f, prepCalibration({ ...defaultCalibration(), mask: ['#EBEBE8'] }), faceSkin(p, f)).state === 'ok' })())
@@ -112,6 +113,7 @@ const gw = (p: Pixels, ps = pose()) => checkGown(p, ps, cal, skinLab)
 t('yellow gown with sleeves → ok', gw(bodyImg(GOWN, GOWN)).state === 'ok', gw(bodyImg(GOWN, GOWN)))
 t('blue gown → ok', gw(bodyImg(hexToRgb('#5A8CD2'), hexToRgb('#5A8CD2'))).state === 'ok')
 t('gown but bare arms → wrong', (v => v.state === 'wrong' && v.msg === 'gown_arms')(gw(bodyImg(GOWN, SKIN))))
+t('one sleeve not covering the arm → wrong', (() => { const p = bodyImg(GOWN, GOWN); for (let k = 0; k <= 1; k += 0.05) paint(p, 0.4 + (0.28 - 0.4) * k, 0.3 + (0.5 - 0.3) * k, 10, SKIN); const v = gw(p); return v.state === 'wrong' && v.msg === 'gown_one_arm' })())
 t('green scrubs → missing', gw(bodyImg(GREEN_SCRUBS, GREEN_SCRUBS)).msg === 'gown_none')
 t('shoulders not visible → uncertain', gw(bodyImg(GOWN, GOWN), pose(0.2)).msg === 'body_not_visible')
 
@@ -131,6 +133,12 @@ t('short window of ok frames can never be ok', vote(rep(OK, 12)).state !== 'ok')
 t('very short window → waiting', vote(rep(OK, 3)).msg === 'waiting')
 t('only last 20 frames count', vote([...rep(NOSE, 30), ...rep(OK, 20)]).state === 'ok')
 t('overall pass / fail / uncertain', overall({ mask: OK, gown: OK, gloves: OK }) === 'pass' && overall({ mask: NOSE, gown: OK, gloves: FACE_LOST }) === 'fail' && overall({ mask: OK, gown: FACE_LOST, gloves: OK }) === 'uncertain')
+
+/* ---------- live coaching ---------- */
+const GOWN_OK: Verdict = { state: 'ok', msg: 'ok_gown' }, GLOVES_OK: Verdict = { state: 'ok', msg: 'ok_gloves' }, NO_GOWN: Verdict = { state: 'missing', msg: 'gown_none' }
+t('coach: next item follows donning order (gown → mask → gloves)', coach({ mask: NOSE, gown: GOWN_OK, gloves: FACE_LOST }).next === 'mask' && coach({ mask: OK, gown: NO_GOWN, gloves: FACE_LOST }).next === 'gown')
+t('coach: all ok → nothing next', coach({ mask: OK, gown: GOWN_OK, gloves: GLOVES_OK }).next === null)
+t('coach: gloves on before gown → order warning', coach({ mask: OK, gown: NO_GOWN, gloves: GLOVES_OK }).order && !coach({ mask: OK, gown: GOWN_OK, gloves: GLOVES_OK }).order)
 
 /* ---------- calibration storage ---------- */
 t('garbage calibration → defaults', JSON.stringify(parseCalibration('{oops')) === JSON.stringify(defaultCalibration()))

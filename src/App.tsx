@@ -30,7 +30,7 @@ function Shell() {
       <Route path="/play/:mode" element={<NeedsProfile><NewGame /></NeedsProfile>} />
       <Route path="/g/:code" element={<NeedsProfile><Game /></NeedsProfile>} />
       <Route path="/spot" element={<NeedsProfile><Spot /></NeedsProfile>} />
-      <Route path="/mirror" element={<NeedsProfile><Mirror /></NeedsProfile>} />
+      <Route path="/mirror" element={<Mirror />} />
       <Route path="/mirror/calibrate" element={<MirrorCalibrate />} />
       <Route path="/manager" element={<ManagerHome />} />
       <Route path="/manager/cases" element={<Cases />} />

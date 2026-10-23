@@ -53,8 +53,7 @@ export const CFG = {
     minTorso: 5,           // of 9 torso points that must be inside the frame
     torsoOk: 0.6,          // share of torso patches that must match the gown
     torsoNone: 0.2,        // at or below this share → no gown
-    armsOk: 0.75,          // share of upper-arm patches that must match the gown
-    armsBare: 0.25,        // at or below this share → arms not covered
+    armPatches: 2,         // patches along each upper arm (shoulder→elbow); an arm is covered/bare only if all agree
   },
   margin: 0.01,            // landmarks closer than this to the frame edge count as outside
   minPatchPx: 2,
@@ -77,7 +76,7 @@ export type MsgId =
   | 'ok_mask' | 'ok_gown' | 'ok_gloves'
   | 'mask_under_nose' | 'mask_under_mouth' | 'mask_none' | 'mask_unknown' | 'face_not_found'
   | 'hands_two' | 'hand_bare' | 'gloves_none' | 'gloves_unknown'
-  | 'body_not_visible' | 'gown_arms' | 'gown_none' | 'gown_unknown'
+  | 'mask_chin' | 'body_not_visible' | 'gown_arms' | 'gown_one_arm' | 'gown_none' | 'gown_unknown'
   | 'dark' | 'bright' | 'waiting' | 'unsteady'
 export type Verdict = { state: State; msg: MsgId }
 export type Rgb = [number, number, number]
@@ -269,6 +268,7 @@ export function checkMask(px: Pixels, face: Pt[] | null | undefined, cal: PrepCa
   if (n === 'covered' && m === 'covered' && c === 'covered') return { state: 'ok', msg: 'ok_mask' }
   if (m === 'covered' && n === 'bare') return { state: 'wrong', msg: 'mask_under_nose' }
   if (c === 'covered' && m === 'bare' && n === 'bare') return { state: 'wrong', msg: 'mask_under_mouth' }
+  if (n === 'covered' && m === 'covered' && c === 'bare') return { state: 'wrong', msg: 'mask_chin' }
   if (n === 'bare' && m === 'bare' && c !== 'covered') return { state: 'missing', msg: 'mask_none' }
   return { state: 'uncertain', msg: 'mask_unknown' }
 }
@@ -315,16 +315,24 @@ export function checkGown(px: Pixels, pose: Pt[] | null | undefined, cal: PrepCa
     torso.push(lerp(lerp(P(POSE.ls), P(POSE.rs), u), lerp(P(POSE.lh), P(POSE.rh), u), v))
   const tIn = torso.filter(inFrame)
   if (tIn.length < CFG.gown.minTorso) return back
-  const arms = [0.35, 0.65].flatMap(t => [lerp(P(POSE.ls), P(POSE.le), t), lerp(P(POSE.rs), P(POSE.re), t)])
+  const ts = Array.from({ length: CFG.gown.armPatches }, (_, i) => (i + 1) / (CFG.gown.armPatches + 1))
+  const arms = [[POSE.ls, POSE.le], [POSE.rs, POSE.re]].map(([s, e]) => ts.map(t => lerp(P(s), P(e), t)))
   dbg?.points.push(...[POSE.ls, POSE.rs, POSE.le, POSE.re, POSE.lh, POSE.rh].map(P))
   const sample = makeSampler(px, skinRef, dbg)
   const r = sw * CFG.gown.patch
   const t = share(tIn.map(p => sample(p, r, cal.gown, CFG.gown.match)), 'item')
-  const a = share(arms.map(p => sample(p, r, cal.gown, CFG.gown.match)), 'item')
+  // each arm: covered only if every patch matches the gown, bare only if none does
+  const arm = arms.map(ps => {
+    const cs = ps.map(p => sample(p, r, cal.gown, CFG.gown.match))
+    if (cs.some(c => c === null)) return 'unknown'
+    return cs.every(c => c === 'item') ? 'covered' : cs.every(c => c !== 'item') ? 'bare' : 'unknown'
+  })
   if (t <= CFG.gown.torsoNone) return { state: 'missing', msg: 'gown_none' }
   if (t < CFG.gown.torsoOk) return { state: 'uncertain', msg: 'gown_unknown' }
-  if (a >= CFG.gown.armsOk) return { state: 'ok', msg: 'ok_gown' }
-  if (a <= CFG.gown.armsBare) return { state: 'wrong', msg: 'gown_arms' }
+  const covered = arm.filter(x => x === 'covered').length, bare = arm.filter(x => x === 'bare').length
+  if (covered === 2) return { state: 'ok', msg: 'ok_gown' }
+  if (bare === 2) return { state: 'wrong', msg: 'gown_arms' }
+  if (covered === 1 && bare === 1) return { state: 'wrong', msg: 'gown_one_arm' }
   return { state: 'uncertain', msg: 'gown_unknown' }
 }
 
@@ -370,6 +378,21 @@ export function vote(frames: Verdict[], n = CFG.vote.window): Verdict {
 
 export const voteAll = (frames: FrameResult[]): Record<ItemId, Verdict> =>
   ({ mask: vote(frames.map(f => f.mask)), gown: vote(frames.map(f => f.gown)), gloves: vote(frames.map(f => f.gloves)) })
+
+/* ---------------- live coaching while putting PPE on ---------------- */
+/** Donning order: gown first, then mask, gloves last (so they go over the gown cuffs). */
+export const DONNING: ItemId[] = ['gown', 'mask', 'gloves']
+
+/**
+ * next  → the first item in donning order that isn't ok yet (null when everything is ok)
+ * order → gloves are already on while the gown is clearly missing (gloves must go on last)
+ */
+export function coach(r: Record<ItemId, Verdict>): { next: ItemId | null; order: boolean } {
+  return {
+    next: DONNING.find(k => r[k].state !== 'ok') ?? null,
+    order: r.gloves.state === 'ok' && r.gown.state === 'missing',
+  }
+}
 
 export function overall(r: Record<ItemId, Verdict>): 'pass' | 'fail' | 'uncertain' {
   const s = ITEMS.map(k => r[k].state)
