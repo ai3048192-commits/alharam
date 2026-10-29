@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Link } from 'react-router-dom'
 import { useSession } from '../lib/session'
-import { errorText, initial, MIRROR_FIX, MIRROR_ITEMS, MIRROR_LIMITS, MIRROR_MSG, MIRROR_NEXT, MIRROR_ORDER } from '../lib/content'
+import { errorText, initial, MIRROR_FIX, MIRROR_GO, MIRROR_ITEMS, MIRROR_LIMITS, MIRROR_MSG, MIRROR_NEXT, MIRROR_ORDER } from '../lib/content'
 import { Confetti, ErrorBox } from '../components/ui'
-import { CFG, ITEMS, coach, overall, type ItemId, type Verdict } from '../mirror/checks'
+import { CFG, DONNING, ITEMS, coach, overall, type ItemId, type Verdict } from '../mirror/checks'
 import { useMirror } from '../mirror/useMirror'
 import { saveResult, type SaveResult } from '../mirror/queue'
 import '../mirror/mirror.css'
@@ -46,17 +46,18 @@ export function useSecretTaps(onToggle: () => void) {
   }
 }
 
-/** One PPE item: state, what's wrong, and «اعمل كده» (how to fix it) for ✗ results. */
-function Row({ k, v, first }: { k: ItemId; v: Verdict; first?: boolean }) {
-  const [cls, ch] = icon(v)
-  const fix = v.state === 'missing' || v.state === 'wrong' ? MIRROR_FIX[v.msg] : undefined
+/** One PPE item: ✓ + «كمّل» when right, the exact problem + «اعمل كده» when wrong, «لسه» for pieces not reached yet. */
+function Row({ k, v, first, pending, cont }: { k: ItemId; v: Verdict; first?: boolean; pending?: boolean; cont?: string }) {
+  const [cls, ch] = pending ? ['wait', '…'] : icon(v)
+  const fix = !pending && (v.state === 'missing' || v.state === 'wrong') ? MIRROR_FIX[v.msg] : undefined
   return (
     <div className="fbr" style={first ? { borderTop: 0, paddingTop: 0 } : undefined}>
       <div className={'ic ' + cls}>{ch}</div>
       <h4>{MIRROR_ITEMS[k]}</h4>
-      <span className="pt small">{v.msg === 'waiting' ? '' : STATE_LABEL[v.state]}</span>
-      {v.state !== 'ok' && <div className="why">{MIRROR_MSG[v.msg]}</div>}
+      <span className="pt small">{pending ? 'لسه' : v.msg === 'waiting' ? '' : STATE_LABEL[v.state]}</span>
+      {!pending && v.msg !== 'waiting' && <div className="why">{MIRROR_MSG[v.msg]}</div>}
       {fix && <div className="mfix"><b>اعمل كده:</b> {fix}</div>}
+      {cont && <div className="mfix"><b>{MIRROR_GO}</b> · {cont}</div>}
     </div>
   )
 }
@@ -75,10 +76,13 @@ export default function Mirror() {
   const savedRun = useRef(false)   // one saved result per camera session
 
   const v = m.live?.voted
-  const full = (m.live?.count ?? 0) >= CFG.vote.window
+  const count = m.live?.count ?? 0
+  const full = count >= CFG.vote.window                                         // "pass" still needs a full, steady window
+  const ready = !!v && count >= Math.ceil(CFG.vote.stateFrac * CFG.vote.window)   // per-piece feedback starts after ~1 s
   const o = v && full ? overall(v) : null
-  const c = v && full ? coach(v) : null
+  const c = v && ready ? coach(v) : null
   const pass = o === 'pass'
+  const bad = !!v && ready && ITEMS.some(k => v[k].state === 'wrong')
 
   // saved for the department head only when this device has a name + department (the server checks); offline results wait on the device
   const save = useCallback((r: Record<ItemId, Verdict>) => {
@@ -107,9 +111,9 @@ export default function Mirror() {
       <div className="card stack" style={{ gap: 8 }}>
         <h3 style={{ fontFamily: 'var(--display)', fontSize: 20 }}>إزاي تستخدمها</h3>
         <ol className="msteps">
-          <li>افتح الكاميرا واقف قدامها على بعد متر ونص تقريبًا، بحيث راسك وكتافك ودراعاتك يبانوا.</li>
+          <li>افتح الكاميرا واقف قدامها على بعد متر ونص لحد حوالي ٢ متر (مش لازم تقرّب)، بحيث راسك وكتافك ودراعاتك يبانوا.</li>
           <li>البس الواقيات قدامها بالترتيب: غطا الراس، بعده الماسك، بعده الجاون، والجوانتي آخر حاجة.</li>
-          <li>وانت بتلبس، هتقولك على طول كل حاجة لابسها صح ولا غلط، ولو غلط تصلحها إزاي.</li>
+          <li>وانت بتلبس، هتقولك على كل حاجة لابسها صح ولا غلط. لو صح هتقولك «كمّل» على اللي بعده، ولو غلط هتقولك فين الغلط وتصلحه إزاي.</li>
           <li>للجوانتي: ارفع إيديك الاتنين جنب كتافك وكفوفك ناحية الكاميرا.</li>
         </ol>
         <p className="small muted" style={{ fontWeight: 600 }}>ده تدريب ومساعدة بس، مش قرار سلامة نهائي. أول مرة بيحمّل ملفات الفحص (حوالي ٣٠ ميجا)، وبعد كده بيشتغل من غير إنترنت.</p>
@@ -120,10 +124,16 @@ export default function Mirror() {
     </div>
   )
 
-  const headline = !v || !full ? 'بيفحص... اقف قدام الكاميرا'
+  const cur = c?.next ?? null
+  const ci = cur ? DONNING.indexOf(cur) : -1
+  const prevOk = !!v && ci > 0 && v[DONNING[ci - 1]].state === 'ok'
+  const cs = v && cur ? v[cur] : null
+  const headline = !v || !ready ? 'بيفحص... اقف قدام الكاميرا'
     : pass ? '✓ كده لابس كل حاجة صح. تقدر تدخل.'
-    : o === 'fail' ? 'فيه حاجة محتاجة تتصلح'
-    : c?.next ? MIRROR_NEXT[c.next] : 'ثبت مكانك شوية'
+    : !cur ? 'ثبت مكانك شوية'
+    : cs?.state === 'wrong' ? `${MIRROR_ITEMS[cur]} محتاج تصليح`
+    : cs?.state === 'missing' ? (prevOk ? `${MIRROR_GO}. ` : '') + MIRROR_NEXT[cur]
+    : MIRROR_MSG[cs!.msg]
   return (
     <div className="stack">
       <Confetti fire={party} />
@@ -138,10 +148,15 @@ export default function Mirror() {
           {m.loading && <div className="mload"><div className="spin" aria-hidden="true" /><p>بنجهّز الكاميرا والفحص...</p><p className="small" style={{ opacity: .85 }}>{PRIVACY}</p></div>}
           {pass && <div className="mpass" aria-hidden="true">✓</div>}
         </CamBox>
-        {!m.loading && <div className={'card mlive' + (pass ? ' pass' : o === 'fail' ? ' fail' : '')} aria-live="polite">
+        {!m.loading && <div className={'card mlive' + (pass ? ' pass' : bad ? ' fail' : '')} aria-live="polite">
           <h3>{headline}</h3>
           {c?.order && <p className="morder">{MIRROR_ORDER}</p>}
-          {ITEMS.map((k, i) => <Row key={k} k={k} v={v && full ? v[k] : { state: 'uncertain', msg: 'waiting' }} first={i === 0} />)}
+          {ITEMS.map((k, i) => {
+            const vk: Verdict = v && ready ? v[k] : { state: 'uncertain', msg: 'waiting' }
+            const pending = ci >= 0 && i > ci && vk.state !== 'ok' && vk.state !== 'wrong'   // not reached yet: no red ✗ while you're still on an earlier piece
+            const cont = vk.state === 'ok' && cur && i === ci - 1 ? MIRROR_NEXT[cur] : undefined
+            return <Row key={k} k={k} v={vk} first={i === 0} pending={pending} cont={cont} />
+          })}
         </div>}
         <div className="banner">{MIRROR_LIMITS}</div>
         {savedNote}
