@@ -69,7 +69,7 @@ export const MIRROR_LIMITS = 'الجهاز مش بيقدر يتأكد من ال�
 export const MIRROR_MSG: Record<MirrorMsg, string> = {
   ok_head: 'غطا الراس مغطي الشعر.',
   head_none: 'غطا الراس مش لابسه',
-  head_hair: 'الشعر باين من تحت غطا الراس',
+  head_hair: 'الشعر باين من جنب غطا الراس',
   head_cut: 'ارجع لورا شوية عشان راسك تبان',
   head_unknown: 'مش قادر أتأكد من غطا الراس. لو لونه مختلف اطلب معايرة الألوان.',
   ok_mask: 'الماسك مغطي الأنف والبق والدقن.',
@@ -80,8 +80,11 @@ export const MIRROR_MSG: Record<MirrorMsg, string> = {
   mask_chin: 'الماسك مش نازل على الدقن.',
   mask_none: 'مفيش ماسك',
   mask_unknown: 'مش قادر أتأكد من الماسك. لو لونه مختلف اطلب معايرة الألوان.',
-  face_not_found: 'بص للكاميرا وقرّب شوية',
+  face_not_found: 'بص للكاميرا',
+  face_far: 'إنت بعيد قوي، قرّب خطوة بس',
+  face_turned: 'بص للكاميرا مباشرة',
   hands_two: 'ارفع إيديك الاتنين قدام الكاميرا',
+  hands_far: 'إيديك صغيرة قوي في الصورة. ارفعهم قدام صدرك ناحية الكاميرا.',
   hand_bare: 'إيد من غير جوانتي',
   gloves_none: 'مفيش جوانتي في الإيدين',
   gloves_unknown: 'مش قادر أتأكد من الجوانتي. خلي كفوفك ناحية الكاميرا.',
@@ -116,6 +119,8 @@ export const MIRROR_NEXT: Record<MirrorItem, string> = {
   gown: 'الخطوة الجاية: البس الجاون',
   gloves: 'الخطوة الجاية: البس الجوانتي (آخر حاجة)',
 }
+/** Said when a piece is right and you can move on to the next one. */
+export const MIRROR_GO = 'كمّل'
 export const MIRROR_ORDER = 'الترتيب الصح: غطا الراس ← الماسك ← الجاون ← الجوانتي آخر حاجة عشان يتسحب فوق كم الجاون.'
 /** Smart PPE Check station: where to get a missing item (the «PPE Corner» shelf next to the screen). */
 export const KIOSK_SHELF: Record<MirrorItem, string> = {
