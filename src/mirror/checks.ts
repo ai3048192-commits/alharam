@@ -10,7 +10,7 @@
    =================================================================================== */
 export const CFG = {
   fps: 12,                 // max analysed frames per second (keeps tablets cool)
-  analysisSize: 640,       // the longer side of the frame we analyse, in px
+  analysisSize: 800,       // the longer side of the frame we analyse, in px (higher = small/far faces and hands stay readable)
   vote: {
     window: 20,            // frames remembered per item (~1.5–2 s at 10–15 fps)
     okFrac: 0.8,           // "ok" only if ≥ 80% of the window is ok
@@ -43,14 +43,14 @@ export const CFG = {
   },
   mask: {
     match: 24,             // max distance to a calibrated mask colour
-    minFace: 0.07,         // face width / longer frame side; smaller → "قرّب"
+    minFace: 0.035,        // face width / longer frame side; smaller → "قرّب" (was 0.07: that forced people to stand close)
     maxYaw: 0.22,          // |nose offset| / face width; larger → turned away
     patch: 0.055,          // patch radius as a fraction of face width
     regionFrac: 0.5,       // a region (nose/mouth/chin) is covered/bare if ≥ this share of its patches agree
   },
   gloves: {
     match: 26,
-    minHand: 0.04,         // wrist→middle-knuckle length / longer frame side
+    minHand: 0.02,         // wrist→middle-knuckle length / longer frame side (was 0.04)
     patch: 0.13,           // patch radius as a fraction of that length
     need: 2,               // of 3 patches per hand (palm + 2 fingers)
   },
@@ -86,7 +86,7 @@ export type MsgId =
   | 'ok_head' | 'ok_mask' | 'ok_gown' | 'ok_gloves'
   | 'head_none' | 'head_hair' | 'head_cut' | 'head_unknown'
   | 'mask_under_nose' | 'mask_under_mouth' | 'mask_none' | 'mask_unknown' | 'face_not_found'
-  | 'hands_two' | 'hand_bare' | 'gloves_none' | 'gloves_unknown'
+  | 'face_far' | 'face_turned' | 'hands_far' | 'hands_two' | 'hand_bare' | 'gloves_none' | 'gloves_unknown'
   | 'mask_chin' | 'body_not_visible' | 'gown_arms' | 'gown_one_arm' | 'gown_none' | 'gown_unknown'
   | 'dark' | 'bright' | 'waiting' | 'unsteady'
 export type Verdict = { state: State; msg: MsgId }
@@ -268,8 +268,8 @@ export function checkMask(px: Pixels, face: Pt[] | null | undefined, cal: PrepCa
   if (!face || face.length < 455) return no
   const L = face[FACE.left], R = face[FACE.right], nose = face[FACE.nose[0]]
   const w = distPx(px, L, R)
-  if (w / Math.max(px.width, px.height) < CFG.mask.minFace) return no                       // too far
-  if (Math.abs(nose.x - (L.x + R.x) / 2) * px.width / w > CFG.mask.maxYaw) return no         // turned away
+  if (w / Math.max(px.width, px.height) < CFG.mask.minFace) return { state: 'uncertain', msg: 'face_far' }   // really too far
+  if (Math.abs(nose.x - (L.x + R.x) / 2) * px.width / w > CFG.mask.maxYaw) return { state: 'uncertain', msg: 'face_turned' }   // turned away
   if (!skinRef) return no
   dbg?.points.push(...[...FACE.nose, ...FACE.mouth, ...FACE.chin, ...FACE.forehead].map(i => face[i]))
   const sample = makeSampler(px, skinRef, dbg)
@@ -299,7 +299,8 @@ export function checkHead(px: Pixels, face: Pt[] | null | undefined, cal: PrepCa
   if (!face || face.length < 455 || !skinRef) return no
   const top = face[FACE.top], chin = face[FACE.chinTip]
   const fh = distPx(px, top, chin), fw = distPx(px, face[FACE.left], face[FACE.right])
-  if (!fh || fw / Math.max(px.width, px.height) < CFG.mask.minFace) return no
+  if (!fh) return no
+  if (fw / Math.max(px.width, px.height) < CFG.mask.minFace) return { state: 'uncertain', msg: 'face_far' }
   // "up the face" (chin → forehead) in px, so a tilted head still samples above its own hairline
   const ux = ((top.x - chin.x) * px.width) / fh, uy = ((top.y - chin.y) * px.height) / fh
   const mid = { x: (face[FACE.left].x + face[FACE.right].x) / 2, y: (face[FACE.left].y + face[FACE.right].y) / 2 }
@@ -338,9 +339,10 @@ export function checkGloves(px: Pixels, hands: Pt[][] | undefined, cal: PrepCal,
   const hs = (hands || []).filter(h => h.length >= 21)
   if (hs.length < 2) return two
   const sample = makeSampler(px, skinRef, dbg)
+  let far = false
   const each: HandState[] = hs.slice(0, 2).map(h => {
     const size = distPx(px, h[HAND.wrist], h[HAND.middle])
-    if (size / Math.max(px.width, px.height) < CFG.gloves.minHand) return null                // hand too small / far
+    if (size / Math.max(px.width, px.height) < CFG.gloves.minHand) { far = true; return null }   // hand too small / far
     const pts = [avg(HAND.palm.map(i => h[i])), lerp(h[HAND.index[0]], h[HAND.index[1]], 0.5), lerp(h[HAND.ring[0]], h[HAND.ring[1]], 0.5)]
     if (!pts.every(inFrame)) return null
     dbg?.points.push(...h)
@@ -349,7 +351,7 @@ export function checkGloves(px: Pixels, hands: Pt[][] | undefined, cal: PrepCal,
     return k('item') >= CFG.gloves.need ? 'gloved' : k('skin') >= CFG.gloves.need ? 'bare' : 'unknown'
   })
   out?.push(...each)
-  if (each.some(e => e === null)) return two
+  if (each.some(e => e === null)) return far ? { state: 'uncertain', msg: 'hands_far' } : two
   const g = each.filter(e => e === 'gloved').length, b = each.filter(e => e === 'bare').length
   if (g === 2) return { state: 'ok', msg: 'ok_gloves' }
   if (b === 2) return { state: 'missing', msg: 'gloves_none' }
